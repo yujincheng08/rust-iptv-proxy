@@ -97,6 +97,7 @@ async fn get_channels() -> Result<RwLockReadGuard<'static, ChannelMap>, Box<dyn 
 
     let timeout = Duration::new(5, 0);
     let client = Client::builder()
+        // .local_address(addr)
         .timeout(timeout)
         .cookie_store(true)
         .build()?;
@@ -217,10 +218,20 @@ async fn get_channels() -> Result<RwLockReadGuard<'static, ChannelMap>, Box<dyn 
         let channels = channels
             .iter_mut()
             .filter(|c| c.contains_key("ChannelID") && c.contains_key("ChannelURL"))
-            .filter_map(|c| match str::parse::<u64>(&c["ChannelID"]) {
+            .filter_map(|c| match c["ChannelURL"].split("|").find(|u| u.starts_with("rtsp")) {
+                    None => None,
+                    Some(i) => {
+                        c.insert("ChannelURL".to_owned(), i.to_owned());
+                        Some(c)
+                    },
+                }
+            )
+            .filter_map(|c| {
+                debug!("{}={}", c["ChannelID"], c["ChannelURL"]);
+                match str::parse::<u64>(&c["ChannelID"]) {
                 Ok(i) => Some((i, c.to_owned())),
                 Err(_) => None,
-            })
+            }})
             .collect::<HashMap<_, _>>();
 
         info!("Got {} channel(s)", channels.len());
@@ -371,10 +382,12 @@ async fn main() {
 
     // Block forever, handling each request that arrives at this IP address
     for stream in listener.incoming() {
-        let stream = stream.unwrap();
-
-        if let Err(e) = handle_connection(stream).await {
-            error!("Error {e}");
+        if let Ok(stream) = stream {
+            tokio::spawn(async move {
+                if let Err(e) = handle_connection(stream).await {
+                    error!("Error {e}");
+                }    
+            });
         }
     }
 }
