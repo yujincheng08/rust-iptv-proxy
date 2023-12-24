@@ -1,34 +1,37 @@
+use actix_web::{get, web::Data, App, HttpServer, Responder};
+use anyhow::{anyhow, Result};
+use chrono::{FixedOffset, TimeZone, Utc};
 use clap::Parser;
 use des::{
     cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyInit},
     TdesEde3,
 };
-#[macro_use]
-extern crate lazy_static;
-use log::{debug, error, info, warn};
+use log::{debug, info};
 use rand::Rng;
 use regex::Regex;
 use reqwest::Client;
 use serde::Deserialize;
 use std::{
     collections::HashMap,
-    error::Error,
-    io::prelude::*,
-    net::{TcpListener, TcpStream},
-    sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, SystemTime},
+    io::BufWriter,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::{RwLock, RwLockReadGuard};
+use tokio::task::JoinSet;
+use xml::writer::{EmitterConfig, XmlEvent};
 
-type ChannelMap = HashMap<u64, HashMap<String, String>>;
-
-type ChannelCache = RwLock<ChannelMap>;
-
-lazy_static! {
-    static ref CHANNEL_CACHE: ChannelCache = ChannelCache::new(ChannelMap::new());
+struct Program {
+    start: i64,
+    stop: i64,
+    title: String,
+    desc: String,
 }
 
-static LAST_UPDATE_TIME: AtomicU64 = AtomicU64::new(0);
+struct Channel {
+    id: u64,
+    name: String,
+    url: String,
+    epg: Vec<Program>,
+}
 
 #[derive(Deserialize)]
 struct AuthJson {
@@ -41,59 +44,51 @@ struct TokenJson {
     encry_token: String,
 }
 
+#[derive(Deserialize)]
+struct PlaybillList {
+    #[serde(rename = "playbillLites")]
+    list: Vec<Bill>,
+}
+
+#[derive(Deserialize)]
+struct Bill {
+    name: String,
+    #[serde(rename = "startTime")]
+    start_time: i64,
+    #[serde(rename = "endTime")]
+    end_time: i64,
+}
+
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None)]
 struct Args {
-    #[clap(short, long, help = "Login username")]
+    #[arg(short, long, help = "Login username")]
     user: String,
 
-    #[clap(short, long, help = "Login password")]
+    #[arg(short, long, help = "Login password")]
     passwd: String,
 
-    #[clap(short, long, help = "MAC address", validator_regex(Regex::new("([0-9A-F]{2}[:]){5}([0-9A-F]{2})").unwrap(), "Should be in upper case and seperated by colon"))]
+    #[arg(short, long, help = "MAC address")]
     mac: String,
 
-    #[clap(short, long, help = "IMEI", default_value_t = String::from(""))]
+    #[arg(short, long, help = "IMEI", default_value_t = String::from(""))]
     imei: String,
 
-    #[clap(short, long, help = "bind address", default_value_t = String::from("127.0.0.1:7878"))]
+    #[arg(short, long, help = "bind address", default_value_t = String::from("127.0.0.1:7878"))]
     bind: String,
 
-    #[clap(short, long, help = "ip address/interface name", default_value_t = String::from(""))]
+    #[arg(short, long, help = "ip address/interface name", default_value_t = String::from(""))]
     address: String,
 }
 
-lazy_static! {
-    static ref ARGS: Args = Args::parse();
-}
+async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
+    info!("Obtaining channels");
 
-async fn get_channels() -> Result<RwLockReadGuard<'static, ChannelMap>, Box<dyn Error>> {
-    let now = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let last_update_time = LAST_UPDATE_TIME.load(Ordering::Acquire);
-
-    let mut channel_gurad = if now - last_update_time > 60 * 60 * 24 {
-        let gurad = CHANNEL_CACHE.write().await;
-        if LAST_UPDATE_TIME
-            .compare_exchange(last_update_time, now, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            return Ok(gurad.downgrade());
-        }
-        gurad
-    } else {
-        return Ok(CHANNEL_CACHE.read().await);
-    };
-
-    info!("Updating channels");
-
-    let user = ARGS.user.as_str();
-    let passwd = ARGS.passwd.as_str();
-    let mac = ARGS.mac.as_str();
-    let imei = ARGS.imei.as_str();
-    let ip = ARGS.address.as_str();
+    let user = args.user.as_str();
+    let passwd = args.passwd.as_str();
+    let mac = args.mac.as_str();
+    let imei = args.imei.as_str();
+    let ip = args.address.as_str();
 
     let timeout = Duration::new(5, 0);
     let client = Client::builder()
@@ -109,24 +104,15 @@ async fn get_channels() -> Result<RwLockReadGuard<'static, ChannelMap>, Box<dyn 
         params,
     )?;
 
-    let response = client.get(url).send().await?;
+    let response = client.get(url).send().await?.error_for_status()?;
 
-    let base_url = if response.status().is_success() {
-        let auth: AuthJson = response.json().await?;
-        let epgurl = reqwest::Url::parse(auth.epgurl.as_str())?;
-        format!(
-            "{}://{}:{}",
-            epgurl.scheme(),
-            epgurl.host_str().ok_or("no host")?,
-            epgurl.port_or_known_default().ok_or("no port")?,
-        )
-    } else {
-        return Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Interrupted,
-            "Failed to get base url",
-        )));
-    };
-
+    let epgurl = reqwest::Url::parse(response.json::<AuthJson>().await?.epgurl.as_str())?;
+    let base_url = format!(
+        "{}://{}:{}",
+        epgurl.scheme(),
+        epgurl.host_str().ok_or(anyhow!("no host"))?,
+        epgurl.port_or_known_default().ok_or(anyhow!("no host"))?,
+    );
     debug!("Got base_url {base_url}");
 
     let params = [
@@ -138,17 +124,9 @@ async fn get_channels() -> Result<RwLockReadGuard<'static, ChannelMap>, Box<dyn 
         format!("{base_url}/EPG/oauth/v2/authorize").as_str(),
         params,
     )?;
-    let response = client.get(url).send().await?;
+    let response = client.get(url).send().await?.error_for_status()?;
 
-    let token = if response.status().is_success() {
-        let auth: TokenJson = response.json().await?;
-        auth.encry_token
-    } else {
-        return Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "Failed to parse token",
-        )));
-    };
+    let token = response.json::<TokenJson>().await?.encry_token;
 
     debug!("Got token {token}");
 
@@ -183,211 +161,185 @@ async fn get_channels() -> Result<RwLockReadGuard<'static, ChannelMap>, Box<dyn 
     ];
     let url =
         reqwest::Url::parse_with_params(format!("{base_url}/EPG/oauth/v2/token").as_str(), params)?;
-    let response = client.get(url).send().await?;
-
-    if !response.status().is_success() {
-        return Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Interrupted,
-            format!("failed {}", response.status()),
-        )));
-    }
+    let _response = client.get(url).send().await?.error_for_status()?;
 
     let url = reqwest::Url::parse(format!("{base_url}/EPG/jsp/getchannellistHWCTC.jsp").as_str())?;
 
-    let response = client.get(url).send().await?;
+    let response = client.get(url).send().await?.error_for_status()?;
 
-    if response.status().is_success() {
-        let res = response.text().await?;
-        let re = Regex::new("Authentication.CTCSetConfig\\('Channel','(.+?)'\\)")?;
-        let mut channels = re
-            .captures_iter(&res)
-            .map(|cap| cap[1].to_string())
-            .map(|s| {
-                s.split("\",")
-                    .map(|s| s.split("=\"").collect::<Vec<_>>())
-                    .filter(|s| s.len() == 2)
-                    .map(|p| {
-                        (
-                            String::from(*p.iter().nth(0).unwrap()),
-                            String::from(*p.iter().nth(1).unwrap()),
-                        )
+    let res = response.text().await?;
+    let re = Regex::new("Authentication.CTCSetConfig\\('Channel','(.+?)'\\)")?;
+    let mut channels = re
+        .captures_iter(&res)
+        .map(|cap| cap[1].to_string())
+        .map(|s| {
+            s.split("\",")
+                .map(|s| s.split("=\"").collect::<Vec<_>>())
+                .filter_map(|s| {
+                    s.get(0)
+                        .map(|a| String::from(*a))
+                        .and_then(|a| s.get(1).map(|b| String::from(*b)).map(|b| (a, b)))
+                })
+                .collect::<HashMap<_, _>>()
+        })
+        .collect::<Vec<_>>();
+
+    let channels = channels
+        .iter_mut()
+        .filter_map(|m| {
+            m.get("ChannelID")
+                .and_then(|i| str::parse::<u64>(i).ok())
+                .map(|i| (i, m))
+        })
+        .filter_map(|(i, m)| {
+            m.get("ChannelName")
+                .map(|n| n.clone())
+                .map(|n| (i, n, m))
+        })
+        .filter_map(|(i, n, m)| {
+            m.get("ChannelURL")
+                .and_then(|u| u.split("|").find(|u| u.starts_with("rtsp")))
+                .map(|u| u.replace("zoneoffset=0", "zoneoffset=480"))
+                .map(|u| (i, n, u))
+        })
+        .map(|(i, n, u)| Channel {
+            id: i,
+            name: n.to_owned(),
+            url: u.to_owned(),
+            epg: vec![],
+        })
+        .collect::<Vec<_>>();
+
+    info!("Got {} channel(s)", channels.len());
+
+    if !need_epg {
+        return Ok(channels);
+    }
+
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
+
+    let mut tasks = JoinSet::new();
+
+    for channel in channels.into_iter() {
+        let params = [
+            ("channelId", format!("{}", channel.id)),
+            ("begin", format!("{}", now - 86400000 * 2)),
+            ("end", format!("{}", now + 86400000 * 5)),
+        ];
+        let url = reqwest::Url::parse_with_params(
+            format!("{base_url}/EPG/jsp/iptvsnmv3/en/play/ajax/_ajax_getPlaybillList.jsp").as_str(),
+            params,
+        )?;
+        let client = client.clone();
+        tasks.spawn(async move { (client.get(url).send().await, channel) });
+    }
+    let mut channels = vec![];
+    while let Some(Ok((Ok(res), mut channel))) = tasks.join_next().await {
+        if let Ok(play_bill_list) = res.json::<PlaybillList>().await {
+            for bill in play_bill_list.list.into_iter() {
+                channel.epg.push(Program {
+                    start: bill.start_time,
+                    stop: bill.end_time,
+                    title: bill.name.clone(),
+                    desc: bill.name,
+                })
+            }
+        }
+        channels.push(channel);
+    }
+
+    Ok(channels)
+}
+
+fn to_xmltv_time(unix_time: i64) -> Result<String> {
+    match Utc.timestamp_millis_opt(unix_time) {
+        chrono::LocalResult::Single(t) => Ok(t
+            .with_timezone(&FixedOffset::east_opt(8 * 60 * 60).ok_or(anyhow!(""))?)
+            .format("%Y%m%d%H%M%S")
+            .to_string()),
+        _ => Err(anyhow!("fail to parse time")),
+    }
+}
+
+fn to_xmltv(channels: Vec<Channel>) -> Result<String> {
+    let mut buf = BufWriter::new(Vec::new());
+    let mut writer = EmitterConfig::new()
+        .perform_indent(false)
+        .create_writer(&mut buf);
+    writer.write(
+        XmlEvent::start_element("tv")
+            .attr("generator-info-name", "iptv-proxy")
+            .attr("source-info-name", "iptv-proxy"),
+    )?;
+    for channel in channels.iter() {
+        writer.write(XmlEvent::start_element("channel").attr("id", &format!("{}", channel.id)))?;
+        writer.write(XmlEvent::start_element("display-name"))?;
+        writer.write(XmlEvent::characters(&channel.name))?;
+        writer.write(XmlEvent::end_element())?;
+        writer.write(XmlEvent::end_element())?;
+    }
+    for channel in channels.iter() {
+        for epg in channel.epg.iter() {
+            writer.write(
+                XmlEvent::start_element("programme")
+                    .attr("start", &format!("{} +0800", to_xmltv_time(epg.start)?))
+                    .attr("stop", &format!("{} +0800", to_xmltv_time(epg.stop)?))
+                    .attr("channel", &format!("{}", channel.id)),
+            )?;
+            writer.write(XmlEvent::start_element("title").attr("lang", "chi"))?;
+            writer.write(XmlEvent::characters(&epg.title))?;
+            writer.write(XmlEvent::end_element())?;
+            if !epg.desc.is_empty() {
+                writer.write(XmlEvent::start_element("desc"))?;
+                writer.write(XmlEvent::characters(&epg.desc))?;
+                writer.write(XmlEvent::end_element())?;
+            }
+            writer.write(XmlEvent::end_element())?;
+        }
+    }
+    writer.write(XmlEvent::end_element())?;
+    Ok(String::from_utf8(buf.into_inner()?)?)
+}
+
+#[get("/xmltv")]
+async fn xmltv(args: Data<Args>) -> impl Responder {
+    debug!("Get EPG");
+    match get_channels(&*args, true).await.and_then(|ch| to_xmltv(ch)) {
+        Err(e) => format!("{}", e),
+        Ok(xml) => xml,
+    }
+}
+
+#[get("playlist")]
+async fn playlist(args: Data<Args>) -> impl Responder {
+    debug!("Get playlist");
+    match get_channels(&*args, false).await {
+        Err(e) => format!("{}", e),
+        Ok(ch) => {
+            String::from("#EXTM3U\n")
+                + &ch
+                    .into_iter()
+                    .map(|c| {
+                        format!(
+                            r#"#EXTINF:-1 tvg-id="{0}" tvg-name="{1}" tvg-chno="{0}",{1}"#,
+                            c.id, c.name
+                        ) + "\n"
+                            + &c.url
                     })
-                    .collect::<HashMap<_, _>>()
-            })
-            .collect::<Vec<_>>();
-        let channels = channels
-            .iter_mut()
-            .filter(|c| c.contains_key("ChannelID") && c.contains_key("ChannelURL"))
-            .filter_map(|c| match c["ChannelURL"].split("|").find(|u| u.starts_with("rtsp")) {
-                    None => None,
-                    Some(i) => {
-                        c.insert("ChannelURL".to_owned(), i.to_owned());
-                        Some(c)
-                    },
-                }
-            )
-            .filter_map(|c| {
-                debug!("{}={}", c["ChannelID"], c["ChannelURL"]);
-                match str::parse::<u64>(&c["ChannelID"]) {
-                Ok(i) => Some((i, c.to_owned())),
-                Err(_) => None,
-            }})
-            .collect::<HashMap<_, _>>();
-
-        info!("Got {} channel(s)", channels.len());
-        for (id, channel) in channels.iter() {
-            info!(
-                "Channel {} in id {}",
-                channel
-                    .get("ChannelName")
-                    .unwrap_or(&String::from("UNKNOWN")),
-                id
-            );
+                    .collect::<Vec<_>>()
+                    .join("\n")
         }
-        *channel_gurad = channels;
-        Ok(channel_gurad.downgrade())
-    } else {
-        return Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Interrupted,
-            "Failed to fetch channel",
-        )));
     }
 }
 
-async fn handle_connection(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
-    // Read the first 1024 bytes of data from the stream
-    let channels = get_channels().await?;
-    let mut buffer = [0; 1024];
-    debug!("Begin handle connection {}", stream.peer_addr()?);
-    let n = stream.read(&mut buffer)?;
-    let req = &buffer[0..n];
-    if !req.ends_with(b"\r\n\r\n") {
-        rtsp_types::Response::builder(
-            rtsp_types::Version::V1_0,
-            rtsp_types::StatusCode::RequestMessageBodyTooLarge,
-        )
-        .header(rtsp_types::headers::CSEQ, "1")
-        .empty()
-        .write(&mut stream)?;
-        stream.flush()?;
-    }
-
-    debug!("Got first header");
-
-    let (message, _): (rtsp_types::Message<Vec<u8>>, _) = rtsp_types::Message::parse(&buffer)?;
-
-    let cseq = match message {
-        rtsp_types::Message::Request(ref request) => {
-            if request.method() != rtsp_types::Method::Options {
-                return Err(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Not support method for the first request",
-                )));
-            }
-            request
-                .header(&rtsp_types::headers::CSEQ)
-                .ok_or("No CSEQ")?
-        }
-        _ => {
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                "Only request is supported",
-            )))
-        }
-    };
-
-    debug!("Respone first request");
-
-    rtsp_types::Response::builder(rtsp_types::Version::V1_0, rtsp_types::StatusCode::Ok)
-        .header(rtsp_types::headers::CSEQ, "2")
-        .empty()
-        .write(&mut stream)?;
-    stream.flush()?;
-
-    let n = stream.read(&mut buffer)?;
-    let req = &buffer[0..n];
-    if !req.ends_with(b"\r\n\r\n") {
-        rtsp_types::Response::builder(
-            rtsp_types::Version::V1_0,
-            rtsp_types::StatusCode::RequestMessageBodyTooLarge,
-        )
-        .header(rtsp_types::headers::CSEQ, cseq.clone())
-        .empty()
-        .write(&mut stream)?;
-        stream.flush()?;
-    }
-
-    debug!("Got second header");
-
-    let (message, _): (rtsp_types::Message<Vec<u8>>, _) = rtsp_types::Message::parse(&buffer)?;
-
-    let (url, cseq) = match message {
-        rtsp_types::Message::Request(ref request) => {
-            if request.method() != rtsp_types::Method::Describe {
-                return Err(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Not support method for the second request",
-                )));
-            }
-            (
-                request.request_uri().ok_or("Request url is empty")?,
-                request
-                    .header(&rtsp_types::headers::CSEQ)
-                    .ok_or("No CSEQ")?,
-            )
-        }
-        _ => {
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                "Only request is supported",
-            )))
-        }
-    };
-
-    let id = str::parse::<u64>(&url.path().clone()[1..])?;
-
-    let channel_url = match channels.get(&id) {
-        Some(channel_url) => channel_url.get("ChannelURL").unwrap(),
-        None => {
-            warn!("channel {id} not found");
-            rtsp_types::Response::builder(
-                rtsp_types::Version::V1_0,
-                rtsp_types::StatusCode::NotFound,
-            )
-            .header(rtsp_types::headers::CSEQ, cseq.clone())
-            .empty()
-            .write(&mut stream)?;
-            return Ok(());
-        }
-    };
-
-    debug!("Respone second request");
-
-    rtsp_types::Response::builder(rtsp_types::Version::V1_0, rtsp_types::StatusCode::Found)
-        .header(rtsp_types::headers::CSEQ, cseq.clone())
-        .header(rtsp_types::headers::LOCATION, channel_url.clone())
-        .empty()
-        .write(&mut stream)?;
-    stream.flush()?;
-
-    Ok(())
-}
-
-#[tokio::main]
-async fn main() {
+#[actix_web::main] // or #[tokio::main]
+async fn main() -> std::io::Result<()> {
     env_logger::init();
-    let arg = &*ARGS;
-    let listener = TcpListener::bind(&arg.bind).unwrap();
-    info!("Binding on {}", arg.bind);
-
-    // Block forever, handling each request that arrives at this IP address
-    for stream in listener.incoming() {
-        if let Ok(stream) = stream {
-            tokio::spawn(async move {
-                if let Err(e) = handle_connection(stream).await {
-                    error!("Error {e}");
-                }    
-            });
-        }
-    }
+    HttpServer::new(|| {
+        let args = Data::new(Args::parse());
+        App::new().service(xmltv).service(playlist).app_data(args)
+    })
+    .bind(Args::parse().bind)?
+    .run()
+    .await
 }
