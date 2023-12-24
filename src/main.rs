@@ -35,6 +35,7 @@ struct Channel {
     name: String,
     url: String,
     epg: Vec<Program>,
+    icon: String,
 }
 
 #[derive(Deserialize)]
@@ -89,9 +90,6 @@ struct Args {
 
     #[arg(long, help = "url to extra xmltv")]
     extra_xmltv: Option<String>,
-
-    #[arg(long, help = "group name to extra channels if group is TV channels", default_value_t = String::from("附加频道"))]
-    extra_group: String,
 }
 
 async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
@@ -216,6 +214,7 @@ async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
             name: n.to_owned(),
             url: u.to_owned(),
             epg: vec![],
+            icon: format!("{base_url}/EPG/jsp/iptvsnmv3/en/list/images/channelIcon/{i}.png"),
         })
         .collect::<Vec<_>>();
 
@@ -286,6 +285,8 @@ fn to_xmltv<R: Read>(channels: Vec<Channel>, extra: Option<EventReader<R>>) -> R
         )?;
         writer.write(XmlWriteEvent::start_element("display-name"))?;
         writer.write(XmlWriteEvent::characters(&channel.name))?;
+        writer.write(XmlWriteEvent::end_element())?;
+        writer.write(XmlWriteEvent::start_element("icon").attr("src", &channel.icon))?;
         writer.write(XmlWriteEvent::end_element())?;
         writer.write(XmlWriteEvent::end_element())?;
     }
@@ -423,8 +424,7 @@ async fn playlist(args: Data<Args>) -> impl Responder {
                     .collect::<Vec<_>>()
                     .join("\n")
                 + &match &args.extra_playlist {
-                    Some(u) => parse_extra_playlist(u).await.unwrap_or(String::from(""))
-                    .replace(r#"group-title="TV channels""#, &format!(r#"group-title="{}""#, args.extra_group)),
+                    Some(u) => parse_extra_playlist(u).await.unwrap_or(String::from("")),
                     None => String::from(""),
                 }
         }
