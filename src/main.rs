@@ -13,11 +13,15 @@ use reqwest::Client;
 use serde::Deserialize;
 use std::{
     collections::HashMap,
-    io::BufWriter,
+    io::{BufWriter, Cursor, Read},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::task::JoinSet;
-use xml::writer::{EmitterConfig, XmlEvent};
+use xml::{
+    reader::XmlEvent as XmlReadEvent,
+    writer::{EmitterConfig, XmlEvent as XmlWriteEvent},
+    EventReader,
+};
 
 struct Program {
     start: i64,
@@ -79,6 +83,15 @@ struct Args {
 
     #[arg(short, long, help = "ip address/interface name", default_value_t = String::from(""))]
     address: String,
+
+    #[arg(long, help = "url to extra m3u")]
+    extra_playlist: Option<String>,
+
+    #[arg(long, help = "url to extra xmltv")]
+    extra_xmltv: Option<String>,
+
+    #[arg(long, help = "group name to extra channels if group is TV channels", default_value_t = String::from("附加频道"))]
+    extra_group: String,
 }
 
 async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
@@ -191,11 +204,7 @@ async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
                 .and_then(|i| str::parse::<u64>(i).ok())
                 .map(|i| (i, m))
         })
-        .filter_map(|(i, m)| {
-            m.get("ChannelName")
-                .map(|n| n.clone())
-                .map(|n| (i, n, m))
-        })
+        .filter_map(|(i, m)| m.get("ChannelName").map(|n| n.clone()).map(|n| (i, n, m)))
         .filter_map(|(i, n, m)| {
             m.get("ChannelURL")
                 .and_then(|u| u.split("|").find(|u| u.starts_with("rtsp")))
@@ -261,53 +270,131 @@ fn to_xmltv_time(unix_time: i64) -> Result<String> {
     }
 }
 
-fn to_xmltv(channels: Vec<Channel>) -> Result<String> {
+fn to_xmltv<R: Read>(channels: Vec<Channel>, extra: Option<EventReader<R>>) -> Result<String> {
     let mut buf = BufWriter::new(Vec::new());
     let mut writer = EmitterConfig::new()
         .perform_indent(false)
         .create_writer(&mut buf);
     writer.write(
-        XmlEvent::start_element("tv")
+        XmlWriteEvent::start_element("tv")
             .attr("generator-info-name", "iptv-proxy")
             .attr("source-info-name", "iptv-proxy"),
     )?;
     for channel in channels.iter() {
-        writer.write(XmlEvent::start_element("channel").attr("id", &format!("{}", channel.id)))?;
-        writer.write(XmlEvent::start_element("display-name"))?;
-        writer.write(XmlEvent::characters(&channel.name))?;
-        writer.write(XmlEvent::end_element())?;
-        writer.write(XmlEvent::end_element())?;
+        writer.write(
+            XmlWriteEvent::start_element("channel").attr("id", &format!("{}", channel.id)),
+        )?;
+        writer.write(XmlWriteEvent::start_element("display-name"))?;
+        writer.write(XmlWriteEvent::characters(&channel.name))?;
+        writer.write(XmlWriteEvent::end_element())?;
+        writer.write(XmlWriteEvent::end_element())?;
+    }
+    if let Some(extra) = extra {
+        for e in extra {
+            match e {
+                Ok(XmlReadEvent::StartElement {
+                    name, attributes, ..
+                }) => {
+                    let name = name.to_string();
+                    let name = name.as_str();
+                    if name != "channel"
+                        && name != "display-name"
+                        && name != "desc"
+                        && name != "title"
+                        && name != "sub-title"
+                        && name != "programme"
+                    {
+                        continue;
+                    }
+                    let mut tag = XmlWriteEvent::start_element(name);
+                    for attr in attributes.iter() {
+                        tag = tag.attr(attr.name.borrow(), &attr.value);
+                    }
+                    writer.write(tag)?;
+                }
+                Ok(XmlReadEvent::Characters(content)) => {
+                    writer.write(XmlWriteEvent::characters(&content))?;
+                }
+                Ok(XmlReadEvent::EndElement { name }) => {
+                    let name = name.to_string();
+                    let name = name.as_str();
+                    if name != "channel"
+                        && name != "display-name"
+                        && name != "desc"
+                        && name != "title"
+                        && name != "sub-title"
+                        && name != "programme"
+                    {
+                        continue;
+                    }
+                    writer.write(XmlWriteEvent::end_element())?;
+                }
+                _ => {}
+            }
+        }
     }
     for channel in channels.iter() {
         for epg in channel.epg.iter() {
             writer.write(
-                XmlEvent::start_element("programme")
+                XmlWriteEvent::start_element("programme")
                     .attr("start", &format!("{} +0800", to_xmltv_time(epg.start)?))
                     .attr("stop", &format!("{} +0800", to_xmltv_time(epg.stop)?))
                     .attr("channel", &format!("{}", channel.id)),
             )?;
-            writer.write(XmlEvent::start_element("title").attr("lang", "chi"))?;
-            writer.write(XmlEvent::characters(&epg.title))?;
-            writer.write(XmlEvent::end_element())?;
+            writer.write(XmlWriteEvent::start_element("title").attr("lang", "chi"))?;
+            writer.write(XmlWriteEvent::characters(&epg.title))?;
+            writer.write(XmlWriteEvent::end_element())?;
             if !epg.desc.is_empty() {
-                writer.write(XmlEvent::start_element("desc"))?;
-                writer.write(XmlEvent::characters(&epg.desc))?;
-                writer.write(XmlEvent::end_element())?;
+                writer.write(XmlWriteEvent::start_element("desc"))?;
+                writer.write(XmlWriteEvent::characters(&epg.desc))?;
+                writer.write(XmlWriteEvent::end_element())?;
             }
-            writer.write(XmlEvent::end_element())?;
+            writer.write(XmlWriteEvent::end_element())?;
         }
     }
-    writer.write(XmlEvent::end_element())?;
+    writer.write(XmlWriteEvent::end_element())?;
     Ok(String::from_utf8(buf.into_inner()?)?)
+}
+
+async fn parse_extra_xml(url: &str) -> Result<EventReader<Cursor<String>>> {
+    let client = Client::builder().build()?;
+    let url = reqwest::Url::parse(url)?;
+    let response = client.get(url).send().await?.error_for_status()?;
+    let xml = response.text().await?;
+    let reader = Cursor::new(xml);
+    Ok(EventReader::new(reader))
 }
 
 #[get("/xmltv")]
 async fn xmltv(args: Data<Args>) -> impl Responder {
     debug!("Get EPG");
-    match get_channels(&*args, true).await.and_then(|ch| to_xmltv(ch)) {
-        Err(e) => format!("{}", e),
+    let ch = get_channels(&*args, true).await;
+    let ch = match ch {
+        Err(e) => return format!("Failed to get channels {}", e),
+        Ok(ch) => ch,
+    };
+    let xml = to_xmltv(
+        ch,
+        match &args.extra_xmltv {
+            Some(u) => parse_extra_xml(u).await.ok(),
+            None => None,
+        },
+    );
+    match xml {
+        Err(e) => format!("Failed to build xmltv {}", e),
         Ok(xml) => xml,
     }
+}
+
+async fn parse_extra_playlist(url: &str) -> Result<String> {
+    let client = Client::builder().build()?;
+    let url = reqwest::Url::parse(url)?;
+    let response = client.get(url).send().await?.error_for_status()?;
+    Ok(response
+        .text()
+        .await?
+        .strip_prefix("#EXTM3U")
+        .map_or(String::from(""), |s| s.to_owned()))
 }
 
 #[get("playlist")]
@@ -320,14 +407,26 @@ async fn playlist(args: Data<Args>) -> impl Responder {
                 + &ch
                     .into_iter()
                     .map(|c| {
+                        let group = if c.name.contains("超清") {
+                            "超清频道"
+                        } else if c.name.contains("高清") {
+                            "高清频道"
+                        } else {
+                            "普通频道"
+                        };
                         format!(
-                            r#"#EXTINF:-1 tvg-id="{0}" tvg-name="{1}" tvg-chno="{0}",{1}"#,
-                            c.id, c.name
+                            r#"#EXTINF:-1 tvg-id="{0}" tvg-name="{1}" tvg-chno="{0}" group-title="{2}",{1}"#,
+                            c.id, c.name, group
                         ) + "\n"
                             + &c.url
                     })
                     .collect::<Vec<_>>()
                     .join("\n")
+                + &match &args.extra_playlist {
+                    Some(u) => parse_extra_playlist(u).await.unwrap_or(String::from(""))
+                    .replace(r#"group-title="TV channels""#, &format!(r#"group-title="{}""#, args.extra_group)),
+                    None => String::from(""),
+                }
         }
     }
 }

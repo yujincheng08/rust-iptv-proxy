@@ -15,6 +15,7 @@ regex = "1"
 reqwest = { version = "0.11", default-features = false, features = [
     "cookies",
     "json",
+    "rustls-tls"
 ] }
 tokio = { version = "1", features = ["full"] }
 log = "0.4"
