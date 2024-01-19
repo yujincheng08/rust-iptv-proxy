@@ -79,7 +79,7 @@ struct Args {
     #[arg(short, long, help = "IMEI", default_value_t = String::from(""))]
     imei: String,
 
-    #[arg(short, long, help = "bind address", default_value_t = String::from("127.0.0.1:7878"))]
+    #[arg(short, long, help = "bind address:port", default_value_t = String::from("127.0.0.1:7878"))]
     bind: String,
 
     #[arg(short, long, help = "ip address/interface name", default_value_t = String::from(""))]
@@ -90,6 +90,9 @@ struct Args {
 
     #[arg(long, help = "url to extra xmltv")]
     extra_xmltv: Option<String>,
+
+    #[arg(long, help = "udp proxy address:port")]
+    udp_proxy: Option<String>,
 }
 
 async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
@@ -205,8 +208,22 @@ async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
         .filter_map(|(i, m)| m.get("ChannelName").map(|n| n.clone()).map(|n| (i, n, m)))
         .filter_map(|(i, n, m)| {
             m.get("ChannelURL")
-                .and_then(|u| u.split("|").find(|u| u.starts_with("rtsp")))
-                .map(|u| u.replace("zoneoffset=0", "zoneoffset=480"))
+                .and_then(|u| {
+                    u.split("|").find(|u| {
+                        if args.udp_proxy.is_none() {
+                            u.starts_with("rtsp")
+                        } else {
+                            u.starts_with("igmp")
+                        }
+                    })
+                })
+                .map(|u| {
+                    if let Some(udp_proxy) = &args.udp_proxy {
+                        u.replace("igmp://", &format!("http://{}/udp/", udp_proxy))
+                    } else {
+                        u.replace("zoneoffset=0", "zoneoffset=480")
+                    }
+                })
                 .map(|u| (i, n, u))
         })
         .map(|(i, n, u)| Channel {
