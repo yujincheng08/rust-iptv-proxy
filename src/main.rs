@@ -324,6 +324,21 @@ fn to_xmltv<R: Read>(channels: Vec<Channel>, extra: Option<EventReader<R>>) -> R
                     {
                         continue;
                     }
+                    let name = if name == "title" {
+                        let mut iter = attributes.iter();
+                        loop {
+                            let attr = iter.next();
+                            if attr.is_none() {
+                                break "title";
+                            }
+                            let attr = attr.unwrap();
+                            if attr.name.to_string() == "lang" && attr.value != "chi" {
+                                break "title_extra";
+                            }
+                        }
+                    } else {
+                        name
+                    };
                     let mut tag = XmlWriteEvent::start_element(name);
                     for attr in attributes.iter() {
                         tag = tag.attr(attr.name.borrow(), &attr.value);
