@@ -1,4 +1,4 @@
-use actix_web::{get, web::Data, App, HttpServer, Responder};
+use actix_web::{get, web::Data, App, HttpServer, Responder, http::StatusCode};
 use anyhow::{anyhow, Result};
 use chrono::{FixedOffset, TimeZone, Utc};
 use clap::Parser;
@@ -6,11 +6,12 @@ use des::{
     cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyInit},
     TdesEde3,
 };
+#[cfg(target_os = "windows")]
 use local_ip_address::list_afinet_netifas;
 use log::{debug, info};
 use rand::Rng;
 use regex::Regex;
-use reqwest::{Client, StatusCode};
+use reqwest::Client;
 use serde::Deserialize;
 use std::{
     collections::HashMap,
@@ -112,6 +113,7 @@ async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
 
     let mut client = Client::builder().timeout(timeout).cookie_store(true);
 
+    #[cfg(target_os = "windows")]
     if let Some(i) = &args.interface {
         let network_interfaces = list_afinet_netifas()?;
         for (name, ip) in network_interfaces.iter() {
@@ -121,6 +123,11 @@ async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
                 break;
             }
         }
+    }
+
+    #[cfg(any(target_os = "android", target_os = "fuchsia", target_os = "linux"))]
+    if let Some(i) = &args.interface {
+        client = client.interface(i);
     }
 
     let client = client.build()?;
