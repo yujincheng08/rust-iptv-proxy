@@ -6,6 +6,7 @@ use des::{
     cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyInit},
     TdesEde3,
 };
+use local_ip_address::list_afinet_netifas;
 use log::{debug, info};
 use rand::Rng;
 use regex::Regex;
@@ -85,6 +86,9 @@ struct Args {
     #[arg(short, long, help = "ip address/interface name", default_value_t = String::from(""))]
     address: String,
 
+    #[arg(short = 'I', long, help = "interface to request")]
+    interface: Option<String>,
+
     #[arg(long, help = "url to extra m3u")]
     extra_playlist: Option<String>,
 
@@ -105,11 +109,21 @@ async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
     let ip = args.address.as_str();
 
     let timeout = Duration::new(5, 0);
-    let client = Client::builder()
-        // .local_address(addr)
-        .timeout(timeout)
-        .cookie_store(true)
-        .build()?;
+
+    let mut client = Client::builder().timeout(timeout).cookie_store(true);
+
+    if let Some(i) = &args.interface {
+        let network_interfaces = list_afinet_netifas()?;
+        for (name, ip) in network_interfaces.iter() {
+            debug!("{}: {}", name, ip);
+            if name == i {
+                client = client.local_address(ip.to_owned());
+                break;
+            }
+        }
+    }
+
+    let client = client.build()?;
 
     let params = [("Action", "Login"), ("return_type", "1"), ("UserID", user)];
 
@@ -403,7 +417,12 @@ async fn xmltv(args: Data<Args>) -> impl Responder {
     debug!("Get EPG");
     let ch = get_channels(&*args, true).await;
     let ch = match ch {
-        Err(e) => return (format!("Failed to get channels {}", e), StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) => {
+            return (
+                format!("Failed to get channels {}", e),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
         Ok(ch) => ch,
     };
     let xml = to_xmltv(
@@ -414,7 +433,10 @@ async fn xmltv(args: Data<Args>) -> impl Responder {
         },
     );
     match xml {
-        Err(e) => (format!("Failed to build xmltv {}", e), StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) => (
+            format!("Failed to build xmltv {}", e),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ),
         Ok(xml) => (xml, StatusCode::OK),
     }
 }
