@@ -9,7 +9,7 @@ use des::{
 use log::{debug, info};
 use rand::Rng;
 use regex::Regex;
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use std::{
     collections::HashMap,
@@ -403,7 +403,7 @@ async fn xmltv(args: Data<Args>) -> impl Responder {
     debug!("Get EPG");
     let ch = get_channels(&*args, true).await;
     let ch = match ch {
-        Err(e) => return format!("Failed to get channels {}", e),
+        Err(e) => return (format!("Failed to get channels {}", e), StatusCode::INTERNAL_SERVER_ERROR),
         Ok(ch) => ch,
     };
     let xml = to_xmltv(
@@ -414,8 +414,8 @@ async fn xmltv(args: Data<Args>) -> impl Responder {
         },
     );
     match xml {
-        Err(e) => format!("Failed to build xmltv {}", e),
-        Ok(xml) => xml,
+        Err(e) => (format!("Failed to build xmltv {}", e), StatusCode::INTERNAL_SERVER_ERROR),
+        Ok(xml) => (xml, StatusCode::OK),
     }
 }
 
@@ -434,9 +434,9 @@ async fn parse_extra_playlist(url: &str) -> Result<String> {
 async fn playlist(args: Data<Args>) -> impl Responder {
     debug!("Get playlist");
     match get_channels(&*args, false).await {
-        Err(e) => format!("{}", e),
+        Err(e) => (format!("Error getting channels: {}", e), StatusCode::INTERNAL_SERVER_ERROR),
         Ok(ch) => {
-            String::from("#EXTM3U\n")
+            (String::from("#EXTM3U\n")
                 + &ch
                     .into_iter()
                     .map(|c| {
@@ -458,7 +458,7 @@ async fn playlist(args: Data<Args>) -> impl Responder {
                 + &match &args.extra_playlist {
                     Some(u) => parse_extra_playlist(u).await.unwrap_or(String::from("")),
                     None => String::from(""),
-                }
+                }, StatusCode::OK)
         }
     }
 }
