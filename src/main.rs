@@ -1,4 +1,4 @@
-use actix_web::{get, web::Data, App, HttpServer, Responder, http::StatusCode};
+use actix_web::{get, http::StatusCode, web::{Data, Path}, App, HttpRequest, HttpServer, Responder};
 use anyhow::{anyhow, Result};
 use chrono::{FixedOffset, TimeZone, Utc};
 use clap::Parser;
@@ -37,7 +37,6 @@ struct Channel {
     name: String,
     url: String,
     epg: Vec<Program>,
-    icon: String,
 }
 
 #[derive(Deserialize)]
@@ -100,21 +99,13 @@ struct Args {
     udp_proxy: Option<String>,
 }
 
-async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
-    info!("Obtaining channels");
-
-    let user = args.user.as_str();
-    let passwd = args.passwd.as_str();
-    let mac = args.mac.as_str();
-    let imei = args.imei.as_str();
-    let ip = args.address.as_str();
-
+fn get_client_with_if(if_name: Option<&str>) -> Result<Client, reqwest::Error> {
     let timeout = Duration::new(5, 0);
 
     let mut client = Client::builder().timeout(timeout).cookie_store(true);
 
     #[cfg(target_os = "windows")]
-    if let Some(i) = &args.interface {
+    if let Some(i) = if_name {
         let network_interfaces = list_afinet_netifas()?;
         for (name, ip) in network_interfaces.iter() {
             debug!("{}: {}", name, ip);
@@ -126,11 +117,15 @@ async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
     }
 
     #[cfg(any(target_os = "android", target_os = "fuchsia", target_os = "linux"))]
-    if let Some(i) = &args.interface {
+    if let Some(i) = &if_name {
         client = client.interface(i);
     }
 
-    let client = client.build()?;
+    client.build()
+}
+
+async fn get_base_url(client: &Client, args: &Args) -> Result<String> {
+    let user = args.user.as_str();
 
     let params = [("Action", "Login"), ("return_type", "1"), ("UserID", user)];
 
@@ -149,6 +144,21 @@ async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
         epgurl.port_or_known_default().ok_or(anyhow!("no host"))?,
     );
     debug!("Got base_url {base_url}");
+    Ok(base_url)
+}
+
+async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
+    info!("Obtaining channels");
+
+    let user = args.user.as_str();
+    let passwd = args.passwd.as_str();
+    let mac = args.mac.as_str();
+    let imei = args.imei.as_str();
+    let ip = args.address.as_str();
+
+    let client = get_client_with_if(args.interface.as_deref())?;
+
+    let base_url = get_base_url(&client, args).await?;
 
     let params = [
         ("response_type", "EncryToken"),
@@ -252,7 +262,6 @@ async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
             name: n.to_owned(),
             url: u.to_owned(),
             epg: vec![],
-            icon: format!("{base_url}/EPG/jsp/iptvsnmv3/en/list/images/channelIcon/{i}.png"),
         })
         .collect::<Vec<_>>();
 
@@ -323,8 +332,6 @@ fn to_xmltv<R: Read>(channels: Vec<Channel>, extra: Option<EventReader<R>>) -> R
         )?;
         writer.write(XmlWriteEvent::start_element("display-name"))?;
         writer.write(XmlWriteEvent::characters(&channel.name))?;
-        writer.write(XmlWriteEvent::end_element())?;
-        writer.write(XmlWriteEvent::start_element("icon").attr("src", &channel.icon))?;
         writer.write(XmlWriteEvent::end_element())?;
         writer.write(XmlWriteEvent::end_element())?;
     }
@@ -459,9 +466,34 @@ async fn parse_extra_playlist(url: &str) -> Result<String> {
         .map_or(String::from(""), |s| s.to_owned()))
 }
 
-#[get("playlist")]
-async fn playlist(args: Data<Args>) -> impl Responder {
+async fn get_icon(args: &Args, id: &str) -> Result<Vec<u8>> {
+    let client = get_client_with_if(args.interface.as_deref())?;
+
+    let base_url = get_base_url(&client, args).await?;
+
+    // http://183.59.87.165:8082/EPG/jsp/iptvsnmv3/en/list/images/channelIcon/477174389.png
+    let url = reqwest::Url::parse(&format!(
+        "{base_url}/EPG/jsp/iptvsnmv3/en/list/images/channelIcon/{}.png",
+        id))?;
+
+    let response = client.get(url).send().await?.error_for_status()?;
+    Ok(response.bytes().await?.to_vec())
+}
+
+#[get("/logo/{id}.png")]
+async fn logo(args: Data<Args>, path: Path<(String,)>) -> impl Responder {
+    debug!("Get logo");
+    match get_icon(&*args, &path.0).await {
+        Ok(icon) => (icon, StatusCode::OK),
+        Err(e) => (format!("Error getting channels: {}", e).into_bytes(), StatusCode::NOT_FOUND)
+    }
+}
+
+#[get("/playlist")]
+async fn playlist(args: Data<Args>, req: HttpRequest) -> impl Responder {
     debug!("Get playlist");
+    let scheme = req.connection_info().scheme().to_owned();
+    let host = req.connection_info().host().to_owned();
     match get_channels(&*args, false).await {
         Err(e) => (format!("Error getting channels: {}", e), StatusCode::INTERNAL_SERVER_ERROR),
         Ok(ch) => {
@@ -477,8 +509,8 @@ async fn playlist(args: Data<Args>) -> impl Responder {
                             "普通频道"
                         };
                         format!(
-                            r#"#EXTINF:-1 tvg-id="{0}" tvg-name="{1}" tvg-chno="{0}" group-title="{2}",{1}"#,
-                            c.id, c.name, group
+                            r#"#EXTINF:-1 tvg-id="{0}" tvg-name="{1}" tvg-chno="{0}" tvg-logo="{3}" group-title="{2}",{1}"#,
+                            c.id, c.name, group, format!("{}://{}/logo/{}.png", scheme, host, c.id)
                         ) + "\n"
                             + &c.url
                     })
@@ -497,7 +529,7 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
     HttpServer::new(|| {
         let args = Data::new(Args::parse());
-        App::new().service(xmltv).service(playlist).app_data(args)
+        App::new().service(xmltv).service(playlist).service(logo).app_data(args)
     })
     .bind(Args::parse().bind)?
     .run()
