@@ -110,7 +110,7 @@ struct Args {
 
 fn get_client_with_if(
     #[allow(unused_variables)] if_name: Option<&str>,
-) -> Result<Client, reqwest::Error> {
+) -> Result<Client> {
     let timeout = Duration::new(5, 0);
     #[allow(unused_mut)]
     let mut client = Client::builder().timeout(timeout).cookie_store(true);
@@ -132,7 +132,7 @@ fn get_client_with_if(
         client = client.interface(i);
     }
 
-    client.build()
+    Ok(client.build()?)
 }
 
 async fn get_base_url(client: &Client, args: &Args) -> Result<String> {
