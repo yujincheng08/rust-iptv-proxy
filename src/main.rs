@@ -1,4 +1,9 @@
-use actix_web::{get, http::StatusCode, web::{Data, Path}, App, HttpRequest, HttpServer, Responder};
+use actix_web::{
+    get,
+    http::StatusCode,
+    web::{Data, Path},
+    App, HttpRequest, HttpServer, Responder,
+};
 use anyhow::{anyhow, Result};
 use chrono::{FixedOffset, TimeZone, Utc};
 use clap::Parser;
@@ -16,6 +21,7 @@ use serde::Deserialize;
 use std::{
     collections::HashMap,
     io::{BufWriter, Cursor, Read},
+    sync::Mutex,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::task::JoinSet;
@@ -24,6 +30,9 @@ use xml::{
     writer::{EmitterConfig, XmlEvent as XmlWriteEvent},
     EventReader,
 };
+
+static OLD_PLAYLIST: Mutex<Option<String>> = Mutex::new(None);
+static OLD_XMLTV: Mutex<Option<String>> = Mutex::new(None);
 
 struct Program {
     start: i64,
@@ -99,9 +108,11 @@ struct Args {
     udp_proxy: Option<String>,
 }
 
-fn get_client_with_if(if_name: Option<&str>) -> Result<Client, reqwest::Error> {
+fn get_client_with_if(
+    #[allow(unused_variables)] if_name: Option<&str>,
+) -> Result<Client, reqwest::Error> {
     let timeout = Duration::new(5, 0);
-
+    #[allow(unused_mut)]
     let mut client = Client::builder().timeout(timeout).cookie_store(true);
 
     #[cfg(target_os = "windows")]
@@ -429,28 +440,24 @@ async fn parse_extra_xml(url: &str) -> Result<EventReader<Cursor<String>>> {
 #[get("/xmltv")]
 async fn xmltv(args: Data<Args>) -> impl Responder {
     debug!("Get EPG");
-    let ch = get_channels(&*args, true).await;
-    let ch = match ch {
-        Err(e) => {
-            return (
-                format!("Failed to get channels {}", e),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-        Ok(ch) => ch,
+    let extra_xml = match &args.extra_xmltv {
+        Some(u) => parse_extra_xml(u).await.ok(),
+        None => None,
     };
-    let xml = to_xmltv(
-        ch,
-        match &args.extra_xmltv {
-            Some(u) => parse_extra_xml(u).await.ok(),
-            None => None,
-        },
-    );
+    let xml = get_channels(&*args, true)
+        .await
+        .and_then(|ch| to_xmltv(ch, extra_xml));
     match xml {
-        Err(e) => (
-            format!("Failed to build xmltv {}", e),
-            StatusCode::INTERNAL_SERVER_ERROR,
-        ),
+        Err(e) => {
+            if let Some(old_xmltv) = OLD_XMLTV.try_lock().ok().and_then(|f| f.to_owned()) {
+                (old_xmltv, StatusCode::OK)
+            } else {
+                (
+                    format!("Error getting channels: {}", e),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+            }
+        }
         Ok(xml) => (xml, StatusCode::OK),
     }
 }
@@ -471,10 +478,10 @@ async fn get_icon(args: &Args, id: &str) -> Result<Vec<u8>> {
 
     let base_url = get_base_url(&client, args).await?;
 
-    // http://183.59.87.165:8082/EPG/jsp/iptvsnmv3/en/list/images/channelIcon/477174389.png
     let url = reqwest::Url::parse(&format!(
         "{base_url}/EPG/jsp/iptvsnmv3/en/list/images/channelIcon/{}.png",
-        id))?;
+        id
+    ))?;
 
     let response = client.get(url).send().await?.error_for_status()?;
     Ok(response.bytes().await?.to_vec())
@@ -485,7 +492,10 @@ async fn logo(args: Data<Args>, path: Path<(String,)>) -> impl Responder {
     debug!("Get logo");
     match get_icon(&*args, &path.0).await {
         Ok(icon) => (icon, StatusCode::OK),
-        Err(e) => (format!("Error getting channels: {}", e).into_bytes(), StatusCode::NOT_FOUND)
+        Err(e) => (
+            format!("Error getting channels: {}", e).into_bytes(),
+            StatusCode::NOT_FOUND,
+        ),
     }
 }
 
@@ -495,9 +505,18 @@ async fn playlist(args: Data<Args>, req: HttpRequest) -> impl Responder {
     let scheme = req.connection_info().scheme().to_owned();
     let host = req.connection_info().host().to_owned();
     match get_channels(&*args, false).await {
-        Err(e) => (format!("Error getting channels: {}", e), StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) => {
+            if let Some(old_playlist) = OLD_PLAYLIST.try_lock().ok().and_then(|f| f.to_owned()) {
+                (old_playlist, StatusCode::OK)
+            } else {
+                (
+                    format!("Error getting channels: {}", e),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+            }
+        }
         Ok(ch) => {
-            (String::from("#EXTM3U\n")
+            let playlist = String::from("#EXTM3U\n")
                 + &ch
                     .into_iter()
                     .map(|c| {
@@ -519,7 +538,11 @@ async fn playlist(args: Data<Args>, req: HttpRequest) -> impl Responder {
                 + &match &args.extra_playlist {
                     Some(u) => parse_extra_playlist(u).await.unwrap_or(String::from("")),
                     None => String::from(""),
-                }, StatusCode::OK)
+                };
+            if let Ok(mut old_playlist) = OLD_PLAYLIST.try_lock() {
+                *old_playlist = Some(playlist.clone());
+            }
+            (playlist, StatusCode::OK)
         }
     }
 }
@@ -529,7 +552,11 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
     HttpServer::new(|| {
         let args = Data::new(Args::parse());
-        App::new().service(xmltv).service(playlist).service(logo).app_data(args)
+        App::new()
+            .service(xmltv)
+            .service(playlist)
+            .service(logo)
+            .app_data(args)
     })
     .bind(Args::parse().bind)?
     .run()

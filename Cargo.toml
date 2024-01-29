@@ -30,3 +30,5 @@ local-ip-address = "0.5"
 opt-level = "z"
 lto = true
 strip = true
+panic = "abort"
+codegen-units = 1
