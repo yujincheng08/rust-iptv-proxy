@@ -35,7 +35,7 @@ USER=
 PASSWD=
 UDP_PROXY=192.168.1.1:4022
 INTERFACE=pppoe-iptv
-BIND=
+BIND=0.0.0.0:7878
 
 start() {
         ( RUST_LOG=info /usr/bin/iptv -u $USER -p $PASSWD -m $MAC -b $BIND --udp-proxy $UDP_PROXY -I $INTERFACE 2>&1 & echo $! >&3 ) 3>/var/run/iptv.pid | logger -t "iptv-proxy" &
