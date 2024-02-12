@@ -44,7 +44,8 @@ struct Program {
 struct Channel {
     id: u64,
     name: String,
-    url: String,
+    rtsp: String,
+    igmp: Option<String>,
     epg: Vec<Program>,
 }
 
@@ -108,9 +109,7 @@ struct Args {
     udp_proxy: Option<String>,
 }
 
-fn get_client_with_if(
-    #[allow(unused_variables)] if_name: Option<&str>,
-) -> Result<Client> {
+fn get_client_with_if(#[allow(unused_variables)] if_name: Option<&str>) -> Result<Client> {
     let timeout = Duration::new(5, 0);
     #[allow(unused_mut)]
     let mut client = Client::builder().timeout(timeout).cookie_store(true);
@@ -251,27 +250,29 @@ async fn get_channels(args: &Args, need_epg: bool) -> Result<Vec<Channel>> {
         .filter_map(|(i, n, m)| {
             m.get("ChannelURL")
                 .and_then(|u| {
-                    u.split("|").find(|u| {
-                        if args.udp_proxy.is_none() {
-                            u.starts_with("rtsp")
-                        } else {
-                            u.starts_with("igmp")
-                        }
-                    })
+                    let rtsp = u.split("|").find(|u| u.starts_with("rtsp"));
+                    let igmp = u.split("|").find(|u| u.starts_with("igmp"));
+                    rtsp.map(|rtsp| (rtsp, igmp))
                 })
-                .map(|u| {
-                    if let Some(udp_proxy) = &args.udp_proxy {
-                        u.replace("igmp://", &format!("http://{}/udp/", udp_proxy))
-                    } else {
-                        u.replace("zoneoffset=0", "zoneoffset=480")
-                    }
+                .map(|(rtsp, igmp)| {
+                    (
+                        rtsp.replace("zoneoffset=0", "zoneoffset=480"),
+                        igmp.map(|igmp| {
+                            if let Some(udp_proxy) = &args.udp_proxy {
+                                igmp.replace("igmp://", &format!("http://{}/udp/", udp_proxy))
+                            } else {
+                                igmp.to_string()
+                            }
+                        }),
+                    )
                 })
                 .map(|u| (i, n, u))
         })
-        .map(|(i, n, u)| Channel {
+        .map(|(i, n, (rtsp, igmp))| Channel {
             id: i,
             name: n.to_owned(),
-            url: u.to_owned(),
+            rtsp,
+            igmp,
             epg: vec![],
         })
         .collect::<Vec<_>>();
@@ -527,16 +528,12 @@ async fn playlist(args: Data<Args>, req: HttpRequest) -> impl Responder {
                         } else {
                             "普通频道"
                         };
-                        let catch_up = if args.udp_proxy.is_none() {
-                            "catchup=\"append\" catchup-source=\"?playseek=${(b)yyyyMMddHHmmss}-${(e)yyyyMMddHHmmss}\""
-                        } else {
-                            ""
-                        };
+                        let catch_up = format!(r#" catchup="append" catchup-source="{}?playseek=${{(b)yyyyMMddHHmmss}}-${{(e)yyyyMMddHHmmss}}" "#,
+                            c.igmp.as_ref().map(|_| &c.rtsp).unwrap_or(&"".to_string()));
                         format!(
-                            r#"#EXTINF:-1 tvg-id="{0}" tvg-name="{1}" tvg-chno="{0}" {3} tvg-logo="{4}" group-title="{2}",{1}"#,
+                            r#"#EXTINF:-1 tvg-id="{0}" tvg-name="{1}" tvg-chno="{0}"{3}tvg-logo="{4}" group-title="{2}",{1}"#,
                             c.id, c.name, group, catch_up, format!("{}://{}/logo/{}.png", scheme, host, c.id)
-                        ) + "\n"
-                            + &c.url
+                        ) + "\n" + c.igmp.as_ref().unwrap_or(&c.rtsp)
                     })
                     .collect::<Vec<_>>()
                     .join("\n")
