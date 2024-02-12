@@ -1,18 +1,19 @@
 ### Usage
 ```
-iptv [Options]
+Usage: iptv [OPTIONS] --user <USER> --passwd <PASSWD> --mac <MAC>
 
 Options:
   -u, --user <USER>                      Login username
   -p, --passwd <PASSWD>                  Login password
   -m, --mac <MAC>                        MAC address
   -i, --imei <IMEI>                      IMEI [default: ]
-  -b, --bind <BIND>                      bind address:port [default: 127.0.0.1:7878]
-  -a, --address <ADDRESS>                ip address/interface name [default: ]
-  -I, --interface <INTERFACE>            interface to request
-      --extra-playlist <EXTRA_PLAYLIST>  url to extra m3u
-      --extra-xmltv <EXTRA_XMLTV>        url to extra xmltv
-      --udp-proxy <UDP_PROXY>            udp proxy address:port
+  -b, --bind <BIND>                      Bind address:port [default: 127.0.0.1:7878]
+  -a, --address <ADDRESS>                IP address/interface name [default: ]
+  -I, --interface <INTERFACE>            Interface to request
+      --extra-playlist <EXTRA_PLAYLIST>  Url to extra m3u
+      --extra-xmltv <EXTRA_XMLTV>        Url to extra xmltv
+      --udp-proxy <UDP_PROXY>            UDP proxy address:port
+      --rtsp-proxy                       Use rtsp proxy
   -h, --help                             Print help
   -V, --version                          Print version
 ```
@@ -38,7 +39,7 @@ INTERFACE=pppoe-iptv
 BIND=0.0.0.0:7878
 
 start() {
-        ( RUST_LOG=info /usr/bin/iptv -u $USER -p $PASSWD -m $MAC -b $BIND --udp-proxy $UDP_PROXY -I $INTERFACE 2>&1 & echo $! >&3 ) 3>/var/run/iptv.pid | logger -t "iptv-proxy" &
+        ( RUST_LOG=info /usr/bin/iptv -u $USER -p $PASSWD -m $MAC -b $BIND --udp-proxy $UDP_PROXY -I $INTERFACE --rtsp-proxy 2>&1 & echo $! >&3 ) 3>/var/run/iptv.pid | logger -t "iptv-proxy" &
 }
 
 stop() {
