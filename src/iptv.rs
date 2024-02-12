@@ -4,7 +4,7 @@ use des::{
     cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyInit},
     TdesEde3,
 };
-#[cfg(target_os = "windows")]
+#[cfg(not(any(target_os = "android", target_os = "fuchsia", target_os = "linux")))]
 use local_ip_address::list_afinet_netifas;
 use log::{debug, info};
 use rand::Rng;
@@ -22,7 +22,7 @@ fn get_client_with_if(#[allow(unused_variables)] if_name: Option<&str>) -> Resul
     #[allow(unused_mut)]
     let mut client = Client::builder().timeout(timeout).cookie_store(true);
 
-    #[cfg(target_os = "windows")]
+    #[cfg(not(any(target_os = "android", target_os = "fuchsia", target_os = "linux")))]
     if let Some(i) = if_name {
         let network_interfaces = list_afinet_netifas()?;
         for (name, ip) in network_interfaces.iter() {
@@ -35,7 +35,7 @@ fn get_client_with_if(#[allow(unused_variables)] if_name: Option<&str>) -> Resul
     }
 
     #[cfg(any(target_os = "android", target_os = "fuchsia", target_os = "linux"))]
-    if let Some(i) = &if_name {
+    if let Some(i) = if_name {
         client = client.interface(i);
     }
 

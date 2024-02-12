@@ -1,8 +1,8 @@
 use actix_web::{
     get,
     http::StatusCode,
-    web::{Data, Path},
-    App, HttpRequest, HttpServer, Responder,
+    web::{Data, Path, Query},
+    App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
 use anyhow::{anyhow, Result};
 use chrono::{FixedOffset, TimeZone, Utc};
@@ -10,6 +10,7 @@ use clap::Parser;
 use log::debug;
 use reqwest::Client;
 use std::{
+    collections::BTreeMap,
     io::{BufWriter, Cursor, Read},
     sync::Mutex,
 };
@@ -24,6 +25,9 @@ use args::Args;
 
 mod iptv;
 use iptv::{get_channels, get_icon, Channel};
+
+mod rtsp_proxy;
+use rtsp_proxy::rtsp_proxy;
 
 static OLD_PLAYLIST: Mutex<Option<String>> = Mutex::new(None);
 static OLD_XMLTV: Mutex<Option<String>> = Mutex::new(None);
@@ -187,9 +191,9 @@ async fn parse_extra_playlist(url: &str) -> Result<String> {
 }
 
 #[get("/logo/{id}.png")]
-async fn logo(args: Data<Args>, path: Path<(String,)>) -> impl Responder {
+async fn logo(args: Data<Args>, path: Path<String>) -> impl Responder {
     debug!("Get logo");
-    match get_icon(&*args, &path.0).await {
+    match get_icon(&*args, &path).await {
         Ok(icon) => (icon, StatusCode::OK),
         Err(e) => (
             format!("Error getting channels: {}", e).into_bytes(),
@@ -247,6 +251,21 @@ async fn playlist(args: Data<Args>, req: HttpRequest) -> impl Responder {
     }
 }
 
+#[get("/rtsp/{tail:.*}")]
+async fn rtsp(
+    args: Data<Args>,
+    mut path: Path<String>,
+    mut params: Query<BTreeMap<String, String>>,
+) -> impl Responder {
+    let path = &mut *path;
+    let params = &mut *params;
+    let mut params = params.into_iter().map(|(k, v)| format!("{}={}", k, v));
+    let param = params.next().unwrap_or("".to_string());
+    let param = params.fold(param, |o, q| format!("{}&{}", o, q));
+    debug!("RTSP proxy rtsp://{}?{}", path, param);
+    HttpResponse::Ok().streaming(rtsp_proxy(format!("rtsp://{}?{}", path, param), args.interface.clone()))
+}
+
 #[actix_web::main] // or #[tokio::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init();
@@ -256,6 +275,7 @@ async fn main() -> std::io::Result<()> {
             .service(xmltv)
             .service(playlist)
             .service(logo)
+            .service(rtsp)
             .app_data(args)
     })
     .bind(Args::parse().bind)?

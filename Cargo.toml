@@ -4,7 +4,7 @@ name = "iptv"
 version = "0.1.0"
 
 [dependencies]
-serde = {version = "1", features = ["derive"]}
+serde = { version = "1", features = ["derive"] }
 clap = { version = "4", features = ["derive"] }
 des = "0.8"
 ecb = { version = "0.1", features = ["alloc", "block-padding"] }
@@ -15,7 +15,7 @@ regex = "1"
 reqwest = { git = "https://github.com/yujincheng08/reqwest.git", branch = "set_interface", default-features = false, features = [
     "cookies",
     "json",
-    "rustls-tls"
+    "rustls-tls",
 ] }
 tokio = { version = "1", features = ["full"] }
 log = "0.4"
@@ -24,6 +24,12 @@ xml-rs = "0.8.19"
 actix-web = "4.4.0"
 anyhow = "1.0.76"
 chrono = "0.4.31"
+async-stream = "0.3"
+futures-core = "0.3"
+futures-util = "0.3"
+retina = { git = "https://github.com/yujincheng08/retina.git", branch = "iptv" }
+
+[target.'cfg(not(any(target_os = "android", target_os = "fuchsia", target_os = "linux")))'.dependencies]
 local-ip-address = "0.5"
 
 [profile.release]
