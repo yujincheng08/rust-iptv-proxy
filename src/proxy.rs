@@ -20,13 +20,13 @@ pub(crate) fn rtsp(url: String, if_name: Option<String>) -> impl Stream<Item = R
     stream! {
         let mut options = SessionOptions::default().follow_redirects(true);
         #[cfg(not(any(target_os = "android", target_os = "fuchsia", target_os = "linux")))]
-        if let Some(i) = if_name {
+        if let Some(ref i) = if_name {
             use log::debug;
             let network_interfaces = list_afinet_netifas()?;
             for (name, ip) in network_interfaces.iter() {
                 debug!("{}: {}", name, ip);
                 if name == i {
-                    options = options.bind(ip);
+                    options = options.bind(ip.to_string());
                     break;
                 }
             }
