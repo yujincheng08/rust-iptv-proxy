@@ -30,8 +30,8 @@ pub(crate) struct Args {
     #[arg(long, help = "Url to extra xmltv")]
     pub(crate) extra_xmltv: Option<String>,
 
-    #[arg(long, help = "UDP proxy address:port")]
-    pub(crate) udp_proxy: Option<String>,
+    #[arg(long, help = "UDP proxy address:port", default_value_t = false)]
+    pub(crate) udp_proxy: bool,
 
     #[arg(long, help = "Use rtsp proxy", default_value_t = false)]
     pub(crate) rtsp_proxy: bool,

@@ -217,8 +217,8 @@ pub(crate) async fn get_channels(
                         }
                         .replace("zoneoffset=0", "zoneoffset=480"),
                         igmp.map(|igmp| {
-                            if let Some(udp_proxy) = &args.udp_proxy {
-                                igmp.replace("igmp://", &format!("http://{}/udp/", udp_proxy))
+                            if args.udp_proxy {
+                                igmp.replace("igmp://", &format!("{}://{}/udp/", scheme, host))
                             } else {
                                 igmp.to_string()
                             }

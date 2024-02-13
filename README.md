@@ -12,7 +12,7 @@ Options:
   -I, --interface <INTERFACE>            Interface to request
       --extra-playlist <EXTRA_PLAYLIST>  Url to extra m3u
       --extra-xmltv <EXTRA_XMLTV>        Url to extra xmltv
-      --udp-proxy <UDP_PROXY>            UDP proxy address:port
+      --udp-proxy                        UDP proxy address:port
       --rtsp-proxy                       Use rtsp proxy
   -h, --help                             Print help
   -V, --version                          Print version
@@ -34,12 +34,11 @@ STOP=99
 MAC=
 USER=
 PASSWD=
-UDP_PROXY=192.168.1.1:4022
 INTERFACE=pppoe-iptv
 BIND=0.0.0.0:7878
 
 start() {
-        ( RUST_LOG=info /usr/bin/iptv -u $USER -p $PASSWD -m $MAC -b $BIND --udp-proxy $UDP_PROXY -I $INTERFACE --rtsp-proxy 2>&1 & echo $! >&3 ) 3>/var/run/iptv.pid | logger -t "iptv-proxy" &
+        ( RUST_LOG=info /usr/bin/iptv -u $USER -p $PASSWD -m $MAC -b $BIND -I $INTERFACE --udp-proxy --rtsp-proxy 2>&1 & echo $! >&3 ) 3>/var/run/iptv.pid | logger -t "iptv-proxy" &
 }
 
 stop() {

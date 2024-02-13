@@ -12,6 +12,8 @@ use reqwest::Client;
 use std::{
     collections::BTreeMap,
     io::{BufWriter, Cursor, Read},
+    net::SocketAddrV4,
+    str::FromStr,
     sync::Mutex,
 };
 use xml::{
@@ -26,8 +28,7 @@ use args::Args;
 mod iptv;
 use iptv::{get_channels, get_icon, Channel};
 
-mod rtsp_proxy;
-use rtsp_proxy::rtsp_proxy;
+mod proxy;
 
 static OLD_PLAYLIST: Mutex<Option<String>> = Mutex::new(None);
 static OLD_XMLTV: Mutex<Option<String>> = Mutex::new(None);
@@ -262,8 +263,20 @@ async fn rtsp(
     let mut params = params.into_iter().map(|(k, v)| format!("{}={}", k, v));
     let param = params.next().unwrap_or("".to_string());
     let param = params.fold(param, |o, q| format!("{}&{}", o, q));
-    debug!("RTSP proxy rtsp://{}?{}", path, param);
-    HttpResponse::Ok().streaming(rtsp_proxy(format!("rtsp://{}?{}", path, param), args.interface.clone()))
+    HttpResponse::Ok().streaming(proxy::rtsp(
+        format!("rtsp://{}?{}", path, param),
+        args.interface.clone(),
+    ))
+}
+
+#[get("/udp/{addr}")]
+async fn udp(addr: Path<String>) -> impl Responder {
+    let addr = &*addr;
+    let addr = match SocketAddrV4::from_str(addr) {
+        Ok(addr) => addr,
+        Err(e) => return HttpResponse::BadRequest().body(format!("Error: {}", e)),
+    };
+    HttpResponse::Ok().streaming(proxy::udp(addr))
 }
 
 #[actix_web::main] // or #[tokio::main]
@@ -276,6 +289,7 @@ async fn main() -> std::io::Result<()> {
             .service(playlist)
             .service(logo)
             .service(rtsp)
+            .service(udp)
             .app_data(args)
     })
     .bind(Args::parse().bind)?

@@ -28,6 +28,8 @@ async-stream = "0.3"
 futures-core = "0.3"
 futures-util = "0.3"
 retina = { git = "https://github.com/yujincheng08/retina.git", branch = "iptv" }
+rtp-rs = "0.6"
+tokio-util = { version = "0.7.0", features = ["codec", "net"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "fuchsia", target_os = "linux")))'.dependencies]
 local-ip-address = "0.5"
