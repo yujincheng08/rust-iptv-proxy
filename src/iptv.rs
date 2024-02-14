@@ -8,7 +8,7 @@ use des::{
 use local_ip_address::list_afinet_netifas;
 use log::{debug, info};
 use rand::Rng;
-use regex::Regex;
+use regex_lite::Regex;
 use reqwest::Client;
 use serde::Deserialize;
 use std::{

@@ -11,15 +11,14 @@ ecb = { version = "0.1", features = ["alloc", "block-padding"] }
 hex = "0.4"
 md5 = "0.7"
 rand = "0.8"
-regex = "1"
+regex-lite = "0.1"
 reqwest = { git = "https://github.com/yujincheng08/reqwest.git", branch = "set_interface", default-features = false, features = [
     "cookies",
     "json",
-    "rustls-tls",
 ] }
 tokio = { version = "1", features = ["full"] }
 log = "0.4"
-env_logger = "0.11"
+env_logger = { version = "0.11", default-features = false }
 xml-rs = "0.8.19"
 actix-web = "4.4.0"
 anyhow = "1.0.76"
@@ -33,6 +32,9 @@ tokio-util = { version = "0.7.0", features = ["codec", "net"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "fuchsia", target_os = "linux")))'.dependencies]
 local-ip-address = "0.5"
+
+[features]
+tls = ["reqwest/native-tls"]
 
 [profile.release]
 opt-level = "z"
