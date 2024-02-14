@@ -707,6 +707,8 @@ version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05e7cf40684ae96ade6232ed84582f40ce0a66efcd43a5117aef610534f8e0b8"
 dependencies = [
+ "anstream",
+ "anstyle",
  "env_filter",
  "log",
 ]

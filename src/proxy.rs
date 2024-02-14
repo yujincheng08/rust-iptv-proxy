@@ -7,7 +7,7 @@ use futures_core::stream::Stream;
 use futures_util::stream::StreamExt;
 #[cfg(not(any(target_os = "android", target_os = "fuchsia", target_os = "linux")))]
 use local_ip_address::list_afinet_netifas;
-use log::{info, error};
+use log::{error, info};
 use reqwest::Url;
 use retina::client::{PacketItem, Session, SessionOptions};
 use rtp_rs::RtpReader;
@@ -90,14 +90,17 @@ pub(crate) fn rtsp(url: String, if_name: Option<String>) -> impl Stream<Item = R
     }
 }
 
-pub(crate) fn udp(
-    multi_addr: SocketAddrV4,
-) -> impl Stream<Item = Result<Bytes>> {
+pub(crate) fn udp(multi_addr: SocketAddrV4) -> impl Stream<Item = Result<Bytes>> {
     stream! {
-        let socket = UdpSocket::bind(multi_addr).await?;
+        #[cfg(target_os = "windows")]
+        let socket = {
+            UdpSocket::bind("0.0.0.0:0").await?
+        };
+        #[cfg(not(target_os = "windows"))]
+        let socket = {
+            UdpSocket::bind(multi_addr).await?
+        };
         socket.set_multicast_loop_v4(true)?;
-
-        assert!(multi_addr.ip().is_multicast(), "Must be multcast address");
 
         socket.join_multicast_v4(
             multi_addr.ip().clone(),
