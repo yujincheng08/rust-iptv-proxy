@@ -137,6 +137,7 @@ pub(crate) fn udp(multi_addr: SocketAddrV4) -> impl Stream<Item = Result<Bytes>>
                     multi_addr.ip().clone(),
                     Ipv4Addr::new(0, 0, 0, 0),
                 ).ok();
+                info!("Udp proxy left {}", multi_addr);
                 break;
             }
         });

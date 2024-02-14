@@ -50,6 +50,30 @@ stop() {
 ```
 
 ### Build for openwrt
+You don't need to install openwrt sdk for this.
+```bash
+rustup target add -v x86_64-unknown-linux-musl
+cargo build -r --target x86_64-unknown-linux-musl
+```
+Append `--features rustls-tls` if need tls support.
+
+To reduce binary size, you need to install openwrt sdk to ${openwrt}, and then build with
+```bash
+rustup toolchain install nightly
+toolchain="$(ls -d ${openwrt}/staging_dir/toolchain-x86_64_gcc-*_musl)"
+export RUSTFLAGS="-C target-feature=-crt-static -C linker=${toolchain}/bin/x86_64-openwrt-linux-gcc"
+cargo +nightly build -Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort -r --target x86_64-unknown-linux-musl
+```
+
+#### Build with openssl for openwrt
+You need to install openwrt sdk to ${openwrt}, and then prepare:
+```bash
+cd ${openwrt}
+./scripts/feeds update
+./scripts/feeds install openssl
+make V=s -j$(nproc)
+```
+Then build with
 ```bash
 rustup target add -v x86_64-unknown-linux-musl
 export PKG_CONFIG_SYSROOT_DIR=${openwrt}/staging_dir/target-x86_64_musl
@@ -57,5 +81,5 @@ toolchain="$(ls -d ${openwrt}/staging_dir/toolchain-x86_64_gcc-*_musl)"
 export TARGET_CC=${toolchain}/bin/x86_64-openwrt-linux-gcc
 export STAGING_DIR=${openwrt}/staging_dir/target-x86_64_musl
 export RUSTFLAGS="-C target-feature=-crt-static -C linker=${toolchain}/bin/x86_64-openwrt-linux-gcc"
-cargo build -r --target x86_64-unknown-linux-musl
+cargo build -r --target x86_64-unknown-linux-musl --features tls
 ```

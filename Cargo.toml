@@ -40,6 +40,7 @@ local-ip-address = "0.5"
 
 [features]
 tls = ["reqwest/native-tls"]
+rustls = ["reqwest/rustls-tls"]
 
 [profile.release]
 opt-level = "z"
