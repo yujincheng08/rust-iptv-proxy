@@ -16,6 +16,19 @@ use tokio_util::bytes::Buf;
 use tokio_util::codec::BytesCodec;
 use tokio_util::udp::UdpFramed;
 
+fn filter_reordered_seq(seq: &mut u16, next: u16) -> bool {
+    let valid = seq.wrapping_add(3000);
+    if *seq == 0
+        || (valid > *seq && next > *seq && next <= valid)
+        || (valid < *seq && (next > *seq || next <= valid))
+    {
+        *seq = next;
+        true
+    } else {
+        false
+    }
+}
+
 pub(crate) fn rtsp(url: String, if_name: Option<String>) -> impl Stream<Item = Result<Bytes>> {
     stream! {
         let mut options = SessionOptions::default().follow_redirects(true);
@@ -54,9 +67,11 @@ pub(crate) fn rtsp(url: String, if_name: Option<String>) -> impl Stream<Item = R
         let (tx, mut rx) = mpsc::channel(128);
 
         tokio::spawn(async move {
+            let mut seq = 0u16;
             while let Some(item) = playing.next().await {
                 if let Ok(PacketItem::Rtp(stream)) = item {
-                    if tx.send(stream).await.is_ok() {
+                    if !filter_reordered_seq(&mut seq, stream.sequence_number()) ||
+                        tx.send(stream.into_payload_bytes()).await.is_ok() {
                         continue;
                     }
                 }
@@ -67,26 +82,12 @@ pub(crate) fn rtsp(url: String, if_name: Option<String>) -> impl Stream<Item = R
         loop {
             let stream = rx.recv().await;
             if let Some(stream) = stream {
-                yield Ok(stream.into_payload_bytes());
+                yield Ok(stream);
             } else {
                 error!("Connection closed");
                 break;
             }
         }
-        // TODO
-        // let mut seq = 0;
-        // while let Some(stream) = playing.next().await {
-        //     if let PacketItem::Rtp(stream) = stream? {
-        //         // if seq > stream.sequence_number() {
-        //         //     continue;
-        //         // }
-        //         // seq = stream.sequence_number();
-        //         yield Ok(stream.into_payload_bytes());
-        //     } else {
-        //         yield Err(anyhow::anyhow!("Unexpected packet type"));
-        //     }
-        // }
-        // yield Ok(stream.into_payload_bytes());
     }
 }
 
@@ -120,12 +121,13 @@ pub(crate) fn udp(multi_addr: SocketAddrV4) -> impl Stream<Item = Result<Bytes>>
         let (tx, mut rx) = mpsc::channel(128);
 
         tokio::spawn(async move {
+            let mut seq = 0u16;
             while let Some(item) = steram.next().await {
                 if let Ok((mut bytes, _)) = item {
                     if let Ok(rtp) = RtpReader::new(bytes.as_ref()) {
-                        let seq = rtp.sequence_number();
+                        let next = rtp.sequence_number().into();
                         bytes.advance(rtp.payload_offset());
-                        if tx.send((seq, bytes)).await.is_ok() {
+                        if !filter_reordered_seq(&mut seq, next) || tx.send(bytes).await.is_ok() {
                             continue;
                         }
                     }
@@ -136,7 +138,7 @@ pub(crate) fn udp(multi_addr: SocketAddrV4) -> impl Stream<Item = Result<Bytes>>
 
         loop {
             let stream = rx.recv().await;
-            if let Some((_, stream)) = stream {
+            if let Some(stream) = stream {
                 yield Ok(Bytes::from(stream));
             } else {
                 error!("Connection closed");
