@@ -185,5 +185,6 @@ pub(crate) fn udp(multi_addr: SocketAddrV4) -> impl Stream<Item = Result<Bytes>>
                 }
             }
         }
+        yield Ok(Bytes::from("hello"))
     }
 }
