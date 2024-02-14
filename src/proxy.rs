@@ -123,7 +123,8 @@ pub(crate) fn udp(multi_addr: SocketAddrV4) -> impl Stream<Item = Result<Bytes>>
         tokio::spawn(async move {
             let mut seq = 0u16;
             while let Some(item) = steram.next().await {
-                if let Ok((mut bytes, _)) = item {
+                if let Ok((bytes, _)) = item {
+                    let mut bytes = bytes.freeze();
                     if let Ok(rtp) = RtpReader::new(bytes.as_ref()) {
                         let next = rtp.sequence_number().into();
                         bytes.advance(rtp.payload_offset());
