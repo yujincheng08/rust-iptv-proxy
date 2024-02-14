@@ -1195,6 +1195,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "hex",
+ "lazy_static",
  "local-ip-address",
  "log",
  "md5",

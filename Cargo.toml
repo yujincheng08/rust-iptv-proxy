@@ -31,6 +31,7 @@ futures-util = "0.3"
 retina = { git = "https://github.com/yujincheng08/retina.git", branch = "iptv" }
 rtp-rs = "0.6"
 tokio-util = { version = "0.7.0", features = ["codec", "net"] }
+lazy_static = "1.4"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 socket2 = "0.5"
