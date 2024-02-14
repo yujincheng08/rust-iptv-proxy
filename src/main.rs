@@ -236,7 +236,7 @@ async fn playlist(args: Data<Args>, req: HttpRequest) -> impl Responder {
                         format!(
                             r#"#EXTINF:-1 tvg-id="{0}" tvg-name="{1}" tvg-chno="{0}"{3}tvg-logo="{4}" group-title="{2}",{1}"#,
                             c.id, c.name, group, catch_up, format!("{}://{}/logo/{}.png", scheme, host, c.id)
-                        ) + "\n" + c.igmp.as_ref().unwrap_or(&c.rtsp)
+                        ) + "\n" + if args.udp_proxy { c.igmp.as_ref().unwrap_or(&c.rtsp) } else { &c.rtsp }
                     })
                     .collect::<Vec<_>>()
                     .join("\n")
