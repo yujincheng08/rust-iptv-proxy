@@ -117,12 +117,12 @@ pub(crate) fn udp(multi_addr: SocketAddrV4) -> impl Stream<Item = Result<Bytes>>
 
         info!("Udp proxy joined {}", multi_addr);
 
-        let mut steram = UdpFramed::new(socket, BytesCodec::new());
+        let mut frames = UdpFramed::new(socket, BytesCodec::new());
         let (tx, mut rx) = mpsc::channel(128);
 
         tokio::spawn(async move {
             let mut seq = 0u16;
-            while let Some(item) = steram.next().await {
+            while let Some(item) = frames.next().await {
                 if let Ok((bytes, _)) = item {
                     let mut bytes = bytes.freeze();
                     if let Ok(rtp) = RtpReader::new(bytes.as_ref()) {
@@ -133,6 +133,10 @@ pub(crate) fn udp(multi_addr: SocketAddrV4) -> impl Stream<Item = Result<Bytes>>
                         }
                     }
                 }
+                frames.get_mut().leave_multicast_v4(
+                    multi_addr.ip().clone(),
+                    Ipv4Addr::new(0, 0, 0, 0),
+                ).ok();
                 break;
             }
         });
