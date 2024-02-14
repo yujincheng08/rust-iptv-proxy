@@ -32,6 +32,9 @@ retina = { git = "https://github.com/yujincheng08/retina.git", branch = "iptv" }
 rtp-rs = "0.6"
 tokio-util = { version = "0.7.0", features = ["codec", "net"] }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+socket2 = "0.5"
+
 [target.'cfg(not(any(target_os = "android", target_os = "fuchsia", target_os = "linux")))'.dependencies]
 local-ip-address = "0.5"
 

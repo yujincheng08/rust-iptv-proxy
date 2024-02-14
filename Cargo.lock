@@ -1204,6 +1204,7 @@ dependencies = [
  "retina",
  "rtp-rs",
  "serde",
+ "socket2",
  "tokio",
  "tokio-util",
  "xml-rs",

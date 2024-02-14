@@ -93,8 +93,15 @@ pub(crate) fn rtsp(url: String, if_name: Option<String>) -> impl Stream<Item = R
 pub(crate) fn udp(multi_addr: SocketAddrV4) -> impl Stream<Item = Result<Bytes>> {
     stream! {
         #[cfg(target_os = "windows")]
-        let socket = {
-            UdpSocket::bind("0.0.0.0:0").await?
+        let socket =  {
+            let socket = socket2::Socket::new(
+                socket2::Domain::IPV4,
+                socket2::Type::DGRAM,
+                Some(socket2::Protocol::UDP),
+            )?;
+            socket.set_reuse_address(true)?;
+            socket.bind(&SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), multi_addr.port()).into())?;
+            UdpSocket::from_std(socket.into())?
         };
         #[cfg(not(target_os = "windows"))]
         let socket = {
