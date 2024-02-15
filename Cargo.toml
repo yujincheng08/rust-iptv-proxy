@@ -5,7 +5,7 @@ version = "0.1.0"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-clap = { version = "4", features = ["derive"] }
+argh = { git = "https://github.com/google/argh.git", default-features = false }
 des = "0.8"
 ecb = { version = "0.1", features = ["alloc", "block-padding"] }
 hex = "0.4"

@@ -1,38 +1,37 @@
-use clap::Parser;
+use argh::FromArgs;
 
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[derive(FromArgs, Clone)]
 pub(crate) struct Args {
-    #[arg(short, long, help = "Login username")]
+    #[argh(option, short = 'u')]
     pub(crate) user: String,
 
-    #[arg(short, long, help = "Login password")]
+    #[argh(option, short = 'p')]
     pub(crate) passwd: String,
 
-    #[arg(short, long, help = "MAC address")]
+    #[argh(option, short = 'm')]
     pub(crate) mac: String,
 
-    #[arg(short, long, help = "IMEI", default_value_t = String::from(""))]
+    #[argh(option, short = 'i', default = r#"String::from("")"#)]
     pub(crate) imei: String,
 
-    #[arg(short, long, help = "Bind address:port", default_value_t = String::from("127.0.0.1:7878"))]
+    #[argh(option, short = 'b', default = r#"String::from("127.0.0.1:7878")"#)]
     pub(crate) bind: String,
 
-    #[arg(short, long, help = "IP address/interface name", default_value_t = String::from(""))]
+    #[argh(option, short = 'a', default = r#"String::from("")"#)]
     pub(crate) address: String,
 
-    #[arg(short = 'I', long, help = "Interface to request")]
+    #[argh(option, short = 'I')]
     pub(crate) interface: Option<String>,
 
-    #[arg(long, help = "Url to extra m3u")]
+    #[argh(option)]
     pub(crate) extra_playlist: Option<String>,
 
-    #[arg(long, help = "Url to extra xmltv")]
+    #[argh(option)]
     pub(crate) extra_xmltv: Option<String>,
 
-    #[arg(long, help = "UDP proxy address:port", default_value_t = false)]
+    #[argh(switch)]
     pub(crate) udp_proxy: bool,
 
-    #[arg(long, help = "Use rtsp proxy", default_value_t = false)]
+    #[argh(switch)]
     pub(crate) rtsp_proxy: bool,
 }

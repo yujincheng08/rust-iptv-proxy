@@ -5,16 +5,12 @@ use actix_web::{
     App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
 use anyhow::{anyhow, Result};
+use argh::FromArgs;
 use chrono::{FixedOffset, TimeZone, Utc};
-use clap::Parser;
 use log::debug;
 use reqwest::Client;
 use std::{
-    collections::BTreeMap,
-    io::{BufWriter, Cursor, Read},
-    net::SocketAddrV4,
-    str::FromStr,
-    sync::Mutex,
+    collections::BTreeMap, io::{BufWriter, Cursor, Read}, net::SocketAddrV4, process::exit, str::FromStr, sync::Mutex
 };
 use xml::{
     reader::XmlEvent as XmlReadEvent,
@@ -279,11 +275,46 @@ async fn udp(addr: Path<String>) -> impl Responder {
     HttpResponse::Ok().streaming(proxy::udp(addr))
 }
 
+fn usage(cmd: &str) -> std::io::Result<()> {
+    let usage = format!(r#"Usage: {} [OPTIONS] --user <USER> --passwd <PASSWD> --mac <MAC>
+
+Options:
+    -u, --user <USER>                      Login username
+    -p, --passwd <PASSWD>                  Login password
+    -m, --mac <MAC>                        MAC address
+    -i, --imei <IMEI>                      IMEI [default: ]
+    -b, --bind <BIND>                      Bind address:port [default: 127.0.0.1:7878]
+    -a, --address <ADDRESS>                IP address/interface name [default: ]
+    -I, --interface <INTERFACE>            Interface to request
+        --extra-playlist <EXTRA_PLAYLIST>  Url to extra m3u
+        --extra-xmltv <EXTRA_XMLTV>        Url to extra xmltv
+        --udp-proxy                        UDP proxy address:port
+        --rtsp-proxy                       Use rtsp proxy
+    -h, --help                             Print help
+    -V, --version                          Print version
+"#, cmd);
+    eprint!("{}", usage);
+    exit(0);
+}
+
 #[actix_web::main] // or #[tokio::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init();
-    HttpServer::new(|| {
-        let args = Data::new(Args::parse());
+    let args = std::env::args().collect::<Vec<_>>();
+    let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+    let args: &[&str] = args.as_ref();
+    if args.len() == 0 {
+        return usage("iptv");
+    }
+    let args = match Args::from_args(&args[0..1], &args[1..]) {
+        Ok(args) => args,
+        Err(_) => {
+            return usage(args[0]);
+        }
+    };
+
+    HttpServer::new(move || {
+        let args = Data::new(argh::from_env::<Args>());
         App::new()
             .service(xmltv)
             .service(playlist)
@@ -292,7 +323,7 @@ async fn main() -> std::io::Result<()> {
             .service(udp)
             .app_data(args)
     })
-    .bind(Args::parse().bind)?
+    .bind(args.bind)?
     .run()
     .await
 }
