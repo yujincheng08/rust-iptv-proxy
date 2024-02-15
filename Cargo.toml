@@ -22,7 +22,7 @@ env_logger = { version = "0.11", default-features = false, features = [
     "auto-color",
 ] }
 xml-rs = "0.8.19"
-actix-web = "4.4.0"
+actix-web = { version = "4.4", default-features = false, features = ["macros"]}
 anyhow = "1.0.76"
 chrono = "0.4.31"
 async-stream = "0.3"
