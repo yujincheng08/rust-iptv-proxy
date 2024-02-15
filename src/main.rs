@@ -10,7 +10,12 @@ use chrono::{FixedOffset, TimeZone, Utc};
 use log::debug;
 use reqwest::Client;
 use std::{
-    collections::BTreeMap, io::{BufWriter, Cursor, Read}, net::SocketAddrV4, process::exit, str::FromStr, sync::Mutex
+    collections::BTreeMap,
+    io::{BufWriter, Cursor, Read},
+    net::SocketAddrV4,
+    process::exit,
+    str::FromStr,
+    sync::Mutex,
 };
 use xml::{
     reader::XmlEvent as XmlReadEvent,
@@ -158,7 +163,7 @@ async fn xmltv(args: Data<Args>, req: HttpRequest) -> impl Responder {
         Some(u) => parse_extra_xml(u).await.ok(),
         None => None,
     };
-    let xml = get_channels(&*args, true, &scheme, &host)
+    let xml = get_channels(&args, true, &scheme, &host)
         .await
         .and_then(|ch| to_xmltv(ch, extra_xml));
     match xml {
@@ -190,7 +195,7 @@ async fn parse_extra_playlist(url: &str) -> Result<String> {
 #[get("/logo/{id}.png")]
 async fn logo(args: Data<Args>, path: Path<String>) -> impl Responder {
     debug!("Get logo");
-    match get_icon(&*args, &path).await {
+    match get_icon(&args, &path).await {
         Ok(icon) => (icon, StatusCode::OK),
         Err(e) => (
             format!("Error getting channels: {}", e).into_bytes(),
@@ -204,7 +209,7 @@ async fn playlist(args: Data<Args>, req: HttpRequest) -> impl Responder {
     debug!("Get playlist");
     let scheme = req.connection_info().scheme().to_owned();
     let host = req.connection_info().host().to_owned();
-    match get_channels(&*args, false, &scheme, &host).await {
+    match get_channels(&args, false, &scheme, &host).await {
         Err(e) => {
             if let Some(old_playlist) = OLD_PLAYLIST.try_lock().ok().and_then(|f| f.to_owned()) {
                 (old_playlist, StatusCode::OK)
@@ -230,8 +235,8 @@ async fn playlist(args: Data<Args>, req: HttpRequest) -> impl Responder {
                         let catch_up = format!(r#" catchup="append" catchup-source="{}?playseek=${{(b)yyyyMMddHHmmss}}-${{(e)yyyyMMddHHmmss}}" "#,
                             c.igmp.as_ref().map(|_| &c.rtsp).unwrap_or(&"".to_string()));
                         format!(
-                            r#"#EXTINF:-1 tvg-id="{0}" tvg-name="{1}" tvg-chno="{0}"{3}tvg-logo="{4}" group-title="{2}",{1}"#,
-                            c.id, c.name, group, catch_up, format!("{}://{}/logo/{}.png", scheme, host, c.id)
+                            r#"#EXTINF:-1 tvg-id="{0}" tvg-name="{1}" tvg-chno="{0}"{3}tvg-logo="{4}://{5}/logo/{6}.png" group-title="{2}",{1}"#,
+                            c.id, c.name, group, catch_up, scheme, host, c.id
                         ) + "\n" + if args.udp_proxy { c.igmp.as_ref().unwrap_or(&c.rtsp) } else { &c.rtsp }
                     })
                     .collect::<Vec<_>>()
@@ -256,7 +261,7 @@ async fn rtsp(
 ) -> impl Responder {
     let path = &mut *path;
     let params = &mut *params;
-    let mut params = params.into_iter().map(|(k, v)| format!("{}={}", k, v));
+    let mut params = params.iter().map(|(k, v)| format!("{}={}", k, v));
     let param = params.next().unwrap_or("".to_string());
     let param = params.fold(param, |o, q| format!("{}&{}", o, q));
     HttpResponse::Ok().streaming(proxy::rtsp(
@@ -276,7 +281,8 @@ async fn udp(addr: Path<String>) -> impl Responder {
 }
 
 fn usage(cmd: &str) -> std::io::Result<()> {
-    let usage = format!(r#"Usage: {} [OPTIONS] --user <USER> --passwd <PASSWD> --mac <MAC>
+    let usage = format!(
+        r#"Usage: {} [OPTIONS] --user <USER> --passwd <PASSWD> --mac <MAC>
 
 Options:
     -u, --user <USER>                      Login username
@@ -292,7 +298,9 @@ Options:
         --rtsp-proxy                       Use rtsp proxy
     -h, --help                             Print help
     -V, --version                          Print version
-"#, cmd);
+"#,
+        cmd
+    );
     eprint!("{}", usage);
     exit(0);
 }
@@ -303,7 +311,7 @@ async fn main() -> std::io::Result<()> {
     let args = std::env::args().collect::<Vec<_>>();
     let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
     let args: &[&str] = args.as_ref();
-    if args.len() == 0 {
+    if args.is_empty() {
         return usage("iptv");
     }
     let args = match Args::from_args(&args[0..1], &args[1..]) {

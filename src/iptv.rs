@@ -185,7 +185,7 @@ pub(crate) async fn get_channels(
             s.split("\",")
                 .map(|s| s.split("=\"").collect::<Vec<_>>())
                 .filter_map(|s| {
-                    s.get(0)
+                    s.first()
                         .map(|a| String::from(*a))
                         .and_then(|a| s.get(1).map(|b| String::from(*b)).map(|b| (a, b)))
                 })
@@ -200,12 +200,12 @@ pub(crate) async fn get_channels(
                 .and_then(|i| str::parse::<u64>(i).ok())
                 .map(|i| (i, m))
         })
-        .filter_map(|(i, m)| m.get("ChannelName").map(|n| n.clone()).map(|n| (i, n, m)))
+        .filter_map(|(i, m)| m.get("ChannelName").cloned().map(|n| (i, n, m)))
         .filter_map(|(i, n, m)| {
             m.get("ChannelURL")
                 .and_then(|u| {
-                    let rtsp = u.split("|").find(|u| u.starts_with("rtsp"));
-                    let igmp = u.split("|").find(|u| u.starts_with("igmp"));
+                    let rtsp = u.split('|').find(|u| u.starts_with("rtsp"));
+                    let igmp = u.split('|').find(|u| u.starts_with("igmp"));
                     rtsp.map(|rtsp| (rtsp, igmp))
                 })
                 .map(|(rtsp, igmp)| {

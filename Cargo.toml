@@ -16,7 +16,7 @@ reqwest = { git = "https://github.com/yujincheng08/reqwest.git", branch = "set_i
     "cookies",
     "json",
 ] }
-tokio = { version = "1", features = ["full"] }
+tokio = "1"
 log = "0.4"
 env_logger = { version = "0.11", default-features = false, features = [
     "auto-color",

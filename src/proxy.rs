@@ -111,7 +111,7 @@ pub(crate) fn udp(multi_addr: SocketAddrV4) -> impl Stream<Item = Result<Bytes>>
         socket.set_multicast_loop_v4(true)?;
 
         socket.join_multicast_v4(
-            multi_addr.ip().clone(),
+            *multi_addr.ip(),
             Ipv4Addr::new(0, 0, 0, 0),
         )?;
 
@@ -134,7 +134,7 @@ pub(crate) fn udp(multi_addr: SocketAddrV4) -> impl Stream<Item = Result<Bytes>>
                     }
                 }
                 frames.get_mut().leave_multicast_v4(
-                    multi_addr.ip().clone(),
+                    *multi_addr.ip(),
                     Ipv4Addr::new(0, 0, 0, 0),
                 ).ok();
                 info!("Udp proxy left {}", multi_addr);
@@ -145,7 +145,7 @@ pub(crate) fn udp(multi_addr: SocketAddrV4) -> impl Stream<Item = Result<Bytes>>
         loop {
             let stream = rx.recv().await;
             if let Some(stream) = stream {
-                yield Ok(Bytes::from(stream));
+                yield Ok(stream);
             } else {
                 error!("Connection closed");
                 break;
