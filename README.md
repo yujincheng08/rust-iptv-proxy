@@ -61,7 +61,7 @@ To reduce binary size, you need to install openwrt sdk to ${openwrt}, and then b
 ```bash
 rustup toolchain install nightly
 toolchain="$(ls -d ${openwrt}/staging_dir/toolchain-x86_64_gcc-*_musl)"
-export RUSTFLAGS="-C target-feature=-crt-static -C linker=${toolchain}/bin/x86_64-openwrt-linux-gcc"
+export RUSTFLAGS="-C target-feature=-crt-static -Zlocation-detail=none -C linker=${toolchain}/bin/x86_64-openwrt-linux-gcc"
 cargo +nightly build -Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort -r --target x86_64-unknown-linux-musl
 ```
 

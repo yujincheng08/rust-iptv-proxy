@@ -22,13 +22,15 @@ env_logger = { version = "0.11", default-features = false, features = [
     "auto-color",
 ] }
 xml-rs = "0.8.19"
-actix-web = { git = "https://github.com/yujincheng08/actix-web.git", branch = "regex-lite", default-features = false, features = ["regex-lite", "macros"]}
+actix-web = { git = "https://github.com/yujincheng08/actix-web.git", branch = "regex-lite", default-features = false, features = [
+    "macros",
+] }
 anyhow = "1.0.76"
 chrono = "0.4.31"
 async-stream = "0.3"
 futures-core = "0.3"
 futures-util = "0.3"
-retina = { git = "https://github.com/yujincheng08/retina.git", branch = "iptv" }
+retina = { git = "https://github.com/yujincheng08/retina.git", branch = "iptv", default-features = false }
 rtp-rs = "0.6"
 tokio-util = { version = "0.7.0", features = ["codec", "net"] }
 
@@ -45,6 +47,6 @@ rustls = ["reqwest/rustls-tls"]
 [profile.release]
 opt-level = "z"
 lto = true
-# strip = true
+strip = true
 panic = "abort"
 codegen-units = 1
