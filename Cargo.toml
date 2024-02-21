@@ -12,7 +12,7 @@ hex = "0.4"
 md5 = "0.7"
 rand = "0.8"
 regex-lite = "0.1"
-reqwest = { git = "https://github.com/yujincheng08/reqwest.git", branch = "set_interface", default-features = false, features = [
+reqwest = { git = "https://github.com/yujincheng08/reqwest.git", branch = "iptv", default-features = false, features = [
     "cookies",
     "json",
 ] }
@@ -41,6 +41,7 @@ socket2 = "0.5"
 local-ip-address = "0.5"
 
 [features]
+http2 = ["reqwest/http2"]
 tls = ["reqwest/native-tls"]
 rustls = ["reqwest/rustls-tls"]
 
