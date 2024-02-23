@@ -1,6 +1,5 @@
 use actix_web::{
     get,
-    http::StatusCode,
     web::{Data, Path, Query},
     App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
@@ -169,15 +168,12 @@ async fn xmltv(args: Data<Args>, req: HttpRequest) -> impl Responder {
     match xml {
         Err(e) => {
             if let Some(old_xmltv) = OLD_XMLTV.try_lock().ok().and_then(|f| f.to_owned()) {
-                (old_xmltv, StatusCode::OK)
+                HttpResponse::Ok().content_type("text/xml").body(old_xmltv)
             } else {
-                (
-                    format!("Error getting channels: {}", e),
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                )
+                HttpResponse::InternalServerError().body(format!("Error getting channels: {}", e))
             }
         }
-        Ok(xml) => (xml, StatusCode::OK),
+        Ok(xml) => HttpResponse::Ok().content_type("text/xml").body(xml),
     }
 }
 
@@ -196,11 +192,8 @@ async fn parse_extra_playlist(url: &str) -> Result<String> {
 async fn logo(args: Data<Args>, path: Path<String>) -> impl Responder {
     debug!("Get logo");
     match get_icon(&args, &path).await {
-        Ok(icon) => (icon, StatusCode::OK),
-        Err(e) => (
-            format!("Error getting channels: {}", e).into_bytes(),
-            StatusCode::NOT_FOUND,
-        ),
+        Ok(icon) => HttpResponse::Ok().content_type("image/png").body(icon),
+        Err(e) => HttpResponse::NotFound().body(format!("Error getting channels: {}", e))
     }
 }
 
@@ -212,12 +205,9 @@ async fn playlist(args: Data<Args>, req: HttpRequest) -> impl Responder {
     match get_channels(&args, false, &scheme, &host).await {
         Err(e) => {
             if let Some(old_playlist) = OLD_PLAYLIST.try_lock().ok().and_then(|f| f.to_owned()) {
-                (old_playlist, StatusCode::OK)
+                HttpResponse::Ok().content_type("application/vnd.apple.mpegurl").body(old_playlist)
             } else {
-                (
-                    format!("Error getting channels: {}", e),
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                )
+                HttpResponse::InternalServerError().body(format!("Error getting channels: {}", e))
             }
         }
         Ok(ch) => {
@@ -248,7 +238,7 @@ async fn playlist(args: Data<Args>, req: HttpRequest) -> impl Responder {
             if let Ok(mut old_playlist) = OLD_PLAYLIST.try_lock() {
                 *old_playlist = Some(playlist.clone());
             }
-            (playlist, StatusCode::OK)
+            HttpResponse::Ok().content_type("application/vnd.apple.mpegurl").body(playlist)
         }
     }
 }
