@@ -1607,7 +1607,7 @@ dependencies = [
 [[package]]
 name = "retina"
 version = "0.4.7"
-source = "git+https://github.com/yujincheng08/retina.git?branch=iptv#a980b5eed8ad1a2ef06581162b445f88d92aa727"
+source = "git+https://github.com/yujincheng08/retina.git?branch=iptv#4473382de7c1fcc67c84b90667c4525680b671b4"
 dependencies = [
  "base64",
  "bitstream-io",
