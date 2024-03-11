@@ -284,7 +284,7 @@ Options:
     -I, --interface <INTERFACE>            Interface to request
         --extra-playlist <EXTRA_PLAYLIST>  Url to extra m3u
         --extra-xmltv <EXTRA_XMLTV>        Url to extra xmltv
-        --udp-proxy                        UDP proxy address:port
+        --udp-proxy                        Use UDP proxy
         --rtsp-proxy                       Use rtsp proxy
     -h, --help                             Print help
     -V, --version                          Print version
