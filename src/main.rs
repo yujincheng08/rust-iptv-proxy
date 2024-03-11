@@ -279,7 +279,7 @@ Options:
     -p, --passwd <PASSWD>                  Login password
     -m, --mac <MAC>                        MAC address
     -i, --imei <IMEI>                      IMEI [default: ]
-    -b, --bind <BIND>                      Bind address:port [default: 127.0.0.1:7878]
+    -b, --bind <BIND>                      Bind address:port [default: 0.0.0.0:7878]
     -a, --address <ADDRESS>                IP address/interface name [default: ]
     -I, --interface <INTERFACE>            Interface to request
         --extra-playlist <EXTRA_PLAYLIST>  Url to extra m3u

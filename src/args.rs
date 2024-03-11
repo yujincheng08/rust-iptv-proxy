@@ -14,7 +14,7 @@ pub(crate) struct Args {
     #[argh(option, short = 'i', default = r#"String::from("")"#)]
     pub(crate) imei: String,
 
-    #[argh(option, short = 'b', default = r#"String::from("127.0.0.1:7878")"#)]
+    #[argh(option, short = 'b', default = r#"String::from("0.0.0.0:7878")"#)]
     pub(crate) bind: String,
 
     #[argh(option, short = 'a', default = r#"String::from("")"#)]
