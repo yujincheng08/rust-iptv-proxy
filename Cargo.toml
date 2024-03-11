@@ -12,7 +12,7 @@ hex = "0.4"
 md5 = "0.7"
 rand = "0.8"
 regex-lite = "0.1"
-reqwest = { git = "https://github.com/seanmonstar/reqwest.git", rev = "037111f2fbd471e9c3c5b3815a5b10283b2729af", default-features = false, features = [
+reqwest = { git = "https://github.com/seanmonstar/reqwest.git", rev = "e3192638518d577759dd89da489175b8f992b12f", default-features = false, features = [
     "cookies",
     "json",
 ] }
@@ -45,7 +45,7 @@ local-ip-address = "0.6"
 
 [features]
 http2 = ["reqwest/http2"]
-tls = ["reqwest/native-tls", "tokio/io-util"]
+tls = ["reqwest/native-tls"]
 rustls = ["reqwest/rustls-tls"]
 
 [profile.release]

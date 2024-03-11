@@ -1548,7 +1548,7 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 [[package]]
 name = "reqwest"
 version = "0.11.25"
-source = "git+https://github.com/seanmonstar/reqwest.git?rev=037111f2fbd471e9c3c5b3815a5b10283b2729af#037111f2fbd471e9c3c5b3815a5b10283b2729af"
+source = "git+https://github.com/seanmonstar/reqwest.git?rev=e3192638518d577759dd89da489175b8f992b12f#e3192638518d577759dd89da489175b8f992b12f"
 dependencies = [
  "base64",
  "bytes",
