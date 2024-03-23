@@ -12,10 +12,10 @@ hex = "0.4"
 md5 = "0.7"
 rand = "0.8"
 regex-lite = "0.1"
-reqwest = { git = "https://github.com/seanmonstar/reqwest.git", rev = "e3192638518d577759dd89da489175b8f992b12f", default-features = false, features = [
+reqwest = { version = "0.12", default-features = false, features = [
     "cookies",
     "json",
-] }
+]}
 tokio = "1"
 log = "0.4"
 env_logger = { version = "0.11", default-features = false, features = [
