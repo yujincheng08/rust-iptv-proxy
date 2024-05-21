@@ -22,9 +22,7 @@ env_logger = { version = "0.11", default-features = false, features = [
     "auto-color",
 ] }
 xml-rs = "0.8.19"
-actix-web = { git = "https://github.com/actix/actix-web.git", rev = "c10f05a8672e53ecada8ec2f15bf9d927efade57", default-features = false, features = [
-    "macros",
-] }
+actix-web = { version="4.5", default-features = false, features = ["macros"] }
 anyhow = "1.0.76"
 chrono = "0.4.31"
 async-stream = "0.3"
@@ -33,9 +31,6 @@ futures-util = "0.3"
 retina = { git = "https://github.com/yujincheng08/retina.git", branch = "iptv", default-features = false }
 rtp-rs = "0.6"
 tokio-util = { version = "0.7.0", features = ["codec", "net"] }
-
-[patch.crates-io]
-actix-router = { git = "https://github.com/actix/actix-web.git", rev = "c10f05a8672e53ecada8ec2f15bf9d927efade57" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 socket2 = "0.5"
