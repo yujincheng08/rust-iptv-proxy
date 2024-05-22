@@ -193,7 +193,7 @@ async fn logo(args: Data<Args>, path: Path<String>) -> impl Responder {
     debug!("Get logo");
     match get_icon(&args, &path).await {
         Ok(icon) => HttpResponse::Ok().content_type("image/png").body(icon),
-        Err(e) => HttpResponse::NotFound().body(format!("Error getting channels: {}", e))
+        Err(e) => HttpResponse::NotFound().body(format!("Error getting channels: {}", e)),
     }
 }
 
@@ -205,7 +205,9 @@ async fn playlist(args: Data<Args>, req: HttpRequest) -> impl Responder {
     match get_channels(&args, false, &scheme, &host).await {
         Err(e) => {
             if let Some(old_playlist) = OLD_PLAYLIST.try_lock().ok().and_then(|f| f.to_owned()) {
-                HttpResponse::Ok().content_type("application/vnd.apple.mpegurl").body(old_playlist)
+                HttpResponse::Ok()
+                    .content_type("application/vnd.apple.mpegurl")
+                    .body(old_playlist)
             } else {
                 HttpResponse::InternalServerError().body(format!("Error getting channels: {}", e))
             }
@@ -238,7 +240,9 @@ async fn playlist(args: Data<Args>, req: HttpRequest) -> impl Responder {
             if let Ok(mut old_playlist) = OLD_PLAYLIST.try_lock() {
                 *old_playlist = Some(playlist.clone());
             }
-            HttpResponse::Ok().content_type("application/vnd.apple.mpegurl").body(playlist)
+            HttpResponse::Ok()
+                .content_type("application/vnd.apple.mpegurl")
+                .body(playlist)
         }
     }
 }
@@ -261,13 +265,13 @@ async fn rtsp(
 }
 
 #[get("/udp/{addr}")]
-async fn udp(addr: Path<String>) -> impl Responder {
+async fn udp(args: Data<Args>, addr: Path<String>) -> impl Responder {
     let addr = &*addr;
     let addr = match SocketAddrV4::from_str(addr) {
         Ok(addr) => addr,
         Err(e) => return HttpResponse::BadRequest().body(format!("Error: {}", e)),
     };
-    HttpResponse::Ok().streaming(proxy::udp(addr))
+    HttpResponse::Ok().streaming(proxy::udp(addr, args.interface.clone()))
 }
 
 fn usage(cmd: &str) -> std::io::Result<()> {

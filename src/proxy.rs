@@ -1,11 +1,10 @@
-use std::net::{Ipv4Addr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, SocketAddrV4};
 
 use actix_web::web::Bytes;
 use anyhow::Result;
 use async_stream::stream;
 use futures_core::stream::Stream;
 use futures_util::stream::StreamExt;
-#[cfg(not(any(target_os = "android", target_os = "fuchsia", target_os = "linux")))]
 use local_ip_address::list_afinet_netifas;
 use log::{error, info};
 use reqwest::Url;
@@ -91,7 +90,10 @@ pub(crate) fn rtsp(url: String, if_name: Option<String>) -> impl Stream<Item = R
     }
 }
 
-pub(crate) fn udp(multi_addr: SocketAddrV4) -> impl Stream<Item = Result<Bytes>> {
+pub(crate) fn udp(
+    multi_addr: SocketAddrV4,
+    if_name: Option<String>,
+) -> impl Stream<Item = Result<Bytes>> {
     stream! {
         #[cfg(target_os = "windows")]
         let socket =  {
@@ -108,11 +110,28 @@ pub(crate) fn udp(multi_addr: SocketAddrV4) -> impl Stream<Item = Result<Bytes>>
         let socket = {
             UdpSocket::bind(multi_addr).await?
         };
+
+        let mut interface = Ipv4Addr::new(0, 0, 0, 0);
+        if let Some(ref i) = if_name {
+            use log::debug;
+            let network_interfaces = list_afinet_netifas()?;
+            for (name, ip) in network_interfaces.iter() {
+                debug!("{}: {}", name, ip);
+                if name != i {
+                    continue;
+                }
+                if let IpAddr::V4(ip) = ip {
+                    interface = *ip;
+                    break;
+                }
+            }
+        }
+
         socket.set_multicast_loop_v4(true)?;
 
         socket.join_multicast_v4(
             *multi_addr.ip(),
-            Ipv4Addr::new(0, 0, 0, 0),
+            interface,
         )?;
 
         info!("Udp proxy joined {}", multi_addr);
