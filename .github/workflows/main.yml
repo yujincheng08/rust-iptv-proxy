@@ -1,23 +1,67 @@
-# .github/workflows/release.yml
+name: Build
 
 on:
-  release:
-    types: [created]
+  workflow_dispatch:
+  push:
+    branches: [ master ]
+    tags: [ v* ]
+  pull_request:
 
 jobs:
-  release:
-    name: release ${{ matrix.target }}
+  build-openwrt:
+    name: Build ${{ matrix.target }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
+        include:
+          - target: x86_64-unknown-linux-musl
+            sdk: https://downloads.openwrt.org/releases/23.05.3/targets/x86/64/openwrt-toolchain-23.05.3-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+          - target: aarch64-unknown-linux-musl
+            sdk: https://downloads.openwrt.org/releases/23.05.3/targets/armsr/armv8/openwrt-toolchain-23.05.3-armsr-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+          - target: mipsel-unknown-linux-musl
+            sdk: https://downloads.openwrt.org/releases/23.05.3/targets/ramips/mt7621/openwrt-toolchain-23.05.3-ramips-mt7621_gcc-12.3.0_musl.Linux-x86_64.tar.xz
     steps:
-      - uses: actions/checkout@master
-      - name: Compile and release
-        uses: rust-build/rust-build.action@v1.4.5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build
+        run: |
+          rustup toolchain add nightly
+          rustup +nightly component add rust-src
+          rustup +nightly target add ${{ matrix.target }} || true
+          mkdir -p ~/openwrt
+          wget "${{ matrix.sdk }}" -qO- | tar --strip-components 1 -C ~/openwrt -xvJ
+          toolchain="$(ls -d ~/openwrt/toolchain-*)"
+          export RUSTFLAGS="-C target-feature=-crt-static -Zlocation-detail=none -C linker=$(ls ${toolchain}/bin/*-openwrt-linux-gcc)"
+          cargo +nightly build -Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort -r --target ${{ matrix.target }}
+          upx -9 target/${{ matrix.target }}/release/iptv
+      - name: Upload
+        uses: actions/upload-artifact@v4
         with:
-          RUSTTARGET: ${{ matrix.target }}
-          EXTRA_FILES: "README.md LICENSE"
+          name: ${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/iptv
+  build-windows:
+    name: Build x86_64-pc-windows-gnu
+    runs-on: windows-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: UCRT64
+        pacboy: upx:p
+    - name: Build
+      env:
+        RUSTFLAGS: -C target-feature=-crt-static -Zlocation-detail=none
+      run: |
+        rustup set default-host x86_64-pc-windows-gnu
+        rustup toolchain add nightly-gnu
+        rustup +nightly component add rust-src
+        cargo +nightly build -Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort -r --target x86_64-pc-windows-gnu
+        msys2 -c 'upx -9 ./target/x86_64-pc-windows-gnu/release/iptv.exe'
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: x86_64-pc-windows-gnu
+        path: target/x86_64-pc-windows-gnu/release/iptv.exe
