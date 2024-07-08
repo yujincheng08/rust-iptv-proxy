@@ -52,14 +52,15 @@ stop() {
 ### Build for openwrt
 You don't need to install openwrt sdk for this.
 ```bash
-rustup target add -v x86_64-unknown-linux-musl
+rustup target add x86_64-unknown-linux-musl
 cargo build -r --target x86_64-unknown-linux-musl
 ```
 Append `--features rustls-tls` if need tls support.
 
 To reduce binary size, you need to install openwrt sdk to ${openwrt}, and then build with
 ```bash
-rustup toolchain install nightly
+rustup toolchain install nightly-x86_64-unknown-linux-musl
+rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
 toolchain="$(ls -d ${openwrt}/staging_dir/toolchain-*)"
 export RUSTFLAGS="-C target-feature=-crt-static -Zlocation-detail=none -C linker=$(ls ${toolchain}/bin/*-openwrt-linux-gcc)"
 cargo +nightly build -Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort -r --target x86_64-unknown-linux-musl
