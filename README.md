@@ -76,7 +76,7 @@ make V=s -j$(nproc)
 ```
 Then build with
 ```bash
-rustup target add -v x86_64-unknown-linux-musl
+rustup target add x86_64-unknown-linux-musl
 export PKG_CONFIG_SYSROOT_DIR=$(ls -d ${openwrt}/staging_dir/target-*)
 export PKG_CONFIG_PATH=$PKG_CONFIG_SYSROOT_DIR/usr/lib/pkgconfig
 toolchain="$(ls -d ${openwrt}/staging_dir/toolchain-*)"
