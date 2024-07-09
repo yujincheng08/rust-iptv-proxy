@@ -154,7 +154,7 @@ pub(crate) fn udp(
                 }
                 frames.get_mut().leave_multicast_v4(
                     *multi_addr.ip(),
-                    Ipv4Addr::new(0, 0, 0, 0),
+                    interface,
                 ).ok();
                 info!("Udp proxy left {}", multi_addr);
                 break;
