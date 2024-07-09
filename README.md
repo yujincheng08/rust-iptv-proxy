@@ -59,7 +59,7 @@ Append `--features rustls-tls` if need tls support.
 
 To reduce binary size, you need to install openwrt sdk to ${openwrt}, and then build with
 ```bash
-rustup toolchain install nightly-x86_64-unknown-linux-musl
+rustup +nightly target add x86_64-unknown-linux-musl
 rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
 toolchain="$(ls -d ${openwrt}/staging_dir/toolchain-*)"
 export RUSTFLAGS="-C target-feature=-crt-static -Zlocation-detail=none -C linker=$(ls ${toolchain}/bin/*-openwrt-linux-gcc)"
