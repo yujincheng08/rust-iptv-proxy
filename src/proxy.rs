@@ -95,7 +95,6 @@ pub(crate) fn udp(
     if_name: Option<String>,
 ) -> impl Stream<Item = Result<Bytes>> {
     stream! {
-        #[cfg(target_os = "windows")]
         let socket =  {
             let socket = socket2::Socket::new(
                 socket2::Domain::IPV4,
@@ -105,10 +104,6 @@ pub(crate) fn udp(
             socket.set_reuse_address(true)?;
             socket.bind(&SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), multi_addr.port()).into())?;
             UdpSocket::from_std(socket.into())?
-        };
-        #[cfg(not(target_os = "windows"))]
-        let socket = {
-            UdpSocket::bind(multi_addr).await?
         };
 
         let mut interface = Ipv4Addr::new(0, 0, 0, 0);
