@@ -15,7 +15,6 @@ Options:
       --udp-proxy                        Use UDP proxy
       --rtsp-proxy                       Use rtsp proxy
   -h, --help                             Print help
-  -V, --version                          Print version
 ```
 
 ### Endpoints
