@@ -102,7 +102,14 @@ pub(crate) fn udp(
                 Some(socket2::Protocol::UDP),
             )?;
             socket.set_reuse_address(true)?;
-            socket.bind(&SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), multi_addr.port()).into())?;
+            #[cfg(not(target_os = "windows"))]
+            {
+                socket.bind(&multi_addr.into())?;
+            }
+            #[cfg(target_os = "windows")]
+            {
+                socket.bind(&SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), multi_addr.port()).into())?;
+            }
             UdpSocket::from_std(socket.into())?
         };
 
