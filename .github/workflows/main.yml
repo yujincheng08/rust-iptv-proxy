@@ -32,7 +32,13 @@ jobs:
           mkdir -p ~/openwrt
           wget "${{ matrix.sdk }}" -qO- | tar --strip-components 1 -C ~/openwrt -xv --zstd
           toolchain="$(ls -d ~/openwrt/toolchain-*)"
-          export RUSTFLAGS="-C target-feature=+crt-static -Zlocation-detail=none -C linker=$(ls ${toolchain}/bin/*-openwrt-linux-gcc)"
+          if [ "${{ matrix.target }}" == "mipsel-unknown-linux-musl" ]; then
+            res_dir="$(ls -d ${toolchain}/lib/gcc/*/*)"
+            cp ${res_dir}/libgcc.a ${res_dir}/libunwind.a
+            export RUSTFLAGS="-C target-feature=+crt-static -Zlocation-detail=none -C linker=$(ls ${toolchain}/bin/*-openwrt-linux-gcc) -L${toolchain}/lib -L${res_dir}"
+          else
+            export RUSTFLAGS="-C target-feature=+crt-static -Zlocation-detail=none -C linker=$(ls ${toolchain}/bin/*-openwrt-linux-gcc)"
+          fi
           cargo +nightly build -Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort -r --target ${{ matrix.target }}
           upx -9 target/${{ matrix.target }}/release/iptv
       - name: Upload
