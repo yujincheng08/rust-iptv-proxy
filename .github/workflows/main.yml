@@ -16,11 +16,11 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
-            sdk: https://downloads.openwrt.org/releases/23.05.3/targets/x86/64/openwrt-toolchain-23.05.3-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+            sdk: https://downloads.openwrt.org/releases/24.10.2/targets/x86/64/openwrt-toolchain-24.10.2-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
           - target: aarch64-unknown-linux-musl
-            sdk: https://downloads.openwrt.org/releases/23.05.3/targets/armsr/armv8/openwrt-toolchain-23.05.3-armsr-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+            sdk: https://downloads.openwrt.org/releases/24.10.2/targets/armsr/armv8/openwrt-toolchain-24.10.2-armsr-armv8_gcc-13.3.0_musl.Linux-x86_64.tar.zst
           - target: mipsel-unknown-linux-musl
-            sdk: https://downloads.openwrt.org/releases/23.05.3/targets/ramips/mt7621/openwrt-toolchain-23.05.3-ramips-mt7621_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+            sdk: https://downloads.openwrt.org/releases/24.10.2/targets/ramips/mt7621/openwrt-toolchain-24.10.2-ramips-mt7621_gcc-13.3.0_musl.Linux-x86_64.tar.zst
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,9 +30,9 @@ jobs:
           rustup +nightly component add rust-src
           rustup +nightly target add ${{ matrix.target }} || true
           mkdir -p ~/openwrt
-          wget "${{ matrix.sdk }}" -qO- | tar --strip-components 1 -C ~/openwrt -xvJ
+          wget "${{ matrix.sdk }}" -qO- | tar --strip-components 1 -C ~/openwrt -xv --zstd
           toolchain="$(ls -d ~/openwrt/toolchain-*)"
-          export RUSTFLAGS="-C target-feature=-crt-static -Zlocation-detail=none -C linker=$(ls ${toolchain}/bin/*-openwrt-linux-gcc)"
+          export RUSTFLAGS="-C target-feature=+crt-static -Zlocation-detail=none -C linker=$(ls ${toolchain}/bin/*-openwrt-linux-gcc)"
           cargo +nightly build -Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort -r --target ${{ matrix.target }}
           upx -9 target/${{ matrix.target }}/release/iptv
       - name: Upload
