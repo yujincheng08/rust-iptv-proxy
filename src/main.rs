@@ -6,7 +6,7 @@ use actix_web::{
 use anyhow::{anyhow, Result};
 use argh::FromArgs;
 use chrono::{FixedOffset, TimeZone, Utc};
-use log::debug;
+use log::{debug, warn};
 use reqwest::Client;
 use std::{
     collections::BTreeMap,
@@ -181,11 +181,15 @@ async fn parse_extra_playlist(url: &str) -> Result<String> {
     let client = Client::builder().build()?;
     let url = reqwest::Url::parse(url)?;
     let response = client.get(url).send().await?.error_for_status()?;
-    Ok(response
-        .text()
-        .await?
-        .strip_prefix("#EXTM3U")
-        .map_or(String::from(""), |s| s.to_owned()))
+    let response = response.text().await?;
+    if response.starts_with("#EXTM3U") {
+        response
+            .find("\n")
+            .map(|i| response[i + 1..].to_owned())
+            .ok_or(anyhow!("Empty playlist"))
+    } else {
+        Err(anyhow!("playlist does not start with #EXTM3U"))
+    }
 }
 
 #[get("/logo/{id}.png")]
@@ -234,7 +238,7 @@ async fn playlist(args: Data<Args>, req: HttpRequest) -> impl Responder {
                     .collect::<Vec<_>>()
                     .join("\n")
                 + &match &args.extra_playlist {
-                    Some(u) => parse_extra_playlist(u).await.unwrap_or(String::from("")),
+                    Some(u) => parse_extra_playlist(u).await.map_err(|e| {warn!("{}", e); e}).unwrap_or(String::from("")),
                     None => String::from(""),
                 };
             if let Ok(mut old_playlist) = OLD_PLAYLIST.try_lock() {
