@@ -10,7 +10,7 @@ use log::{debug, warn};
 use reqwest::Client;
 use std::{
     collections::BTreeMap,
-    io::{BufWriter, Cursor, Read},
+    io::{BufWriter, Cursor},
     net::SocketAddrV4,
     process::exit,
     str::FromStr,
@@ -21,6 +21,8 @@ use xml::{
     writer::{EmitterConfig, XmlEvent as XmlWriteEvent},
     EventReader,
 };
+
+use tokio::task::JoinSet;
 
 mod args;
 use args::Args;
@@ -43,7 +45,7 @@ fn to_xmltv_time(unix_time: i64) -> Result<String> {
     }
 }
 
-fn to_xmltv<R: Read>(channels: Vec<Channel>, extra: Option<EventReader<R>>) -> Result<String> {
+fn to_xmltv(channels: Vec<Channel>, extra: Vec<EventReader<Cursor<String>>>) -> Result<String> {
     let mut buf = BufWriter::new(Vec::new());
     let mut writer = EmitterConfig::new()
         .perform_indent(false)
@@ -62,8 +64,9 @@ fn to_xmltv<R: Read>(channels: Vec<Channel>, extra: Option<EventReader<R>>) -> R
         writer.write(XmlWriteEvent::end_element())?;
         writer.write(XmlWriteEvent::end_element())?;
     }
-    if let Some(extra) = extra {
-        for e in extra {
+    // For each extra xml reader, iterate its events and copy allowed tags
+    for reader in extra {
+        for e in reader {
             match e {
                 Ok(XmlReadEvent::StartElement {
                     name, attributes, ..
@@ -158,13 +161,28 @@ async fn xmltv(args: Data<Args>, req: HttpRequest) -> impl Responder {
     debug!("Get EPG");
     let scheme = req.connection_info().scheme().to_owned();
     let host = req.connection_info().host().to_owned();
-    let extra_xml = match &args.extra_xmltv {
-        Some(u) => parse_extra_xml(u).await.ok(),
-        None => None,
+    // parse all extra xmltv URLs in parallel using JoinSet, collect successful readers
+    let extra_readers = if !args.extra_xmltv.is_empty() {
+        let mut set = JoinSet::new();
+        for (i, u) in args.extra_xmltv.iter().enumerate() {
+            let u = u.clone();
+            set.spawn(async move { (i, parse_extra_xml(&u).await) });
+        }
+        let mut readers = Vec::new();
+        while let Some(res) = set.join_next().await {
+            match res {
+                Ok((_, Ok(reader))) => readers.push(reader),
+                Ok((i, Err(e))) => warn!("Failed to parse extra xmltv ({}): {}", args.extra_xmltv[i], e),
+                Err(e) => warn!("Task join error parsing extra xmltv: {}", e),
+            }
+        }
+        readers
+    } else {
+        Vec::new()
     };
     let xml = get_channels(&args, true, &scheme, &host)
         .await
-        .and_then(|ch| to_xmltv(ch, extra_xml));
+        .and_then(|ch| to_xmltv(ch, extra_readers));
     match xml {
         Err(e) => {
             if let Some(old_xmltv) = OLD_XMLTV.try_lock().ok().and_then(|f| f.to_owned()) {
@@ -184,11 +202,11 @@ async fn parse_extra_playlist(url: &str) -> Result<String> {
     let response = response.text().await?;
     if response.starts_with("#EXTM3U") {
         response
-            .find("\n")
+            .find('\n')
             .map(|i| response[i + 1..].to_owned())
             .ok_or(anyhow!("Empty playlist"))
     } else {
-        Err(anyhow!("playlist does not start with #EXTM3U"))
+        Err(anyhow!("Playlist does not start with #EXTM3U"))
     }
 }
 
@@ -237,9 +255,26 @@ async fn playlist(args: Data<Args>, req: HttpRequest) -> impl Responder {
                     })
                     .collect::<Vec<_>>()
                     .join("\n")
-                + &match &args.extra_playlist {
-                    Some(u) => parse_extra_playlist(u).await.map_err(|e| {warn!("{}", e); e}).unwrap_or(String::from("")),
-                    None => String::from(""),
+                // parse all extra playlists in parallel and append successful ones using JoinSet
+                + &{
+                    if !args.extra_playlist.is_empty() {
+                        let mut set = JoinSet::new();
+                        for (i, u) in args.extra_playlist.iter().enumerate() {
+                            let u = u.clone();
+                            set.spawn(async move { (i, parse_extra_playlist(&u).await) });
+                        }
+                        let mut parts = Vec::new();
+                        while let Some(res) = set.join_next().await {
+                            match res {
+                                Ok((_, Ok(s))) => parts.push(s),
+                                Ok((i, Err(e))) => warn!("Failed to parse extra playlist ({}): {}", args.extra_playlist[i], e),
+                                Err(e) => warn!("Task join error parsing extra playlist: {}", e),
+                            }
+                        }
+                        parts.join("\n")
+                    } else {
+                        String::from("")
+                    }
                 };
             if let Ok(mut old_playlist) = OLD_PLAYLIST.try_lock() {
                 *old_playlist = Some(playlist.clone());

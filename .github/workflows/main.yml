@@ -64,7 +64,7 @@ jobs:
         rustup set default-host x86_64-pc-windows-gnu
         rustup toolchain add nightly-gnu
         rustup +nightly component add rust-src
-        cargo +nightly build -Z build-std=std,panic_abort  -r --target x86_64-pc-windows-gnu
+        cargo +nightly build -Z build-std=std,panic_abort -r --target x86_64-pc-windows-gnu
         msys2 -c 'upx -9 ./target/x86_64-pc-windows-gnu/release/iptv.exe'
     - name: Upload
       uses: actions/upload-artifact@v4

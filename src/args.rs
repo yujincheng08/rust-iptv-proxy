@@ -24,10 +24,10 @@ pub(crate) struct Args {
     pub(crate) interface: Option<String>,
 
     #[argh(option)]
-    pub(crate) extra_playlist: Option<String>,
+    pub(crate) extra_playlist: Vec<String>,
 
     #[argh(option)]
-    pub(crate) extra_xmltv: Option<String>,
+    pub(crate) extra_xmltv: Vec<String>,
 
     #[argh(switch)]
     pub(crate) udp_proxy: bool,
