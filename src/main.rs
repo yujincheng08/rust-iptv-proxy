@@ -203,7 +203,7 @@ async fn parse_extra_playlist(url: &str) -> Result<String> {
     if response.starts_with("#EXTM3U") {
         response
             .find('\n')
-            .map(|i| response[i + 1..].to_owned())
+            .map(|i| response[i..].to_owned()) // include \n
             .ok_or(anyhow!("Empty playlist"))
     } else {
         Err(anyhow!("Playlist does not start with #EXTM3U"))
