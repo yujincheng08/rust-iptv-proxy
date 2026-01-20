@@ -1,7 +1,7 @@
-FROM alpine:latest
+FROM alpine:latest AS builder
 
-# 安装必要依赖
-RUN apk add --no-cache ca-certificates libc6-compat libgcc libstdc++ curl unzip
+# 仅在构建阶段安装下载和解压工具
+RUN apk add --no-cache curl unzip
 
 WORKDIR /app
 
@@ -9,7 +9,6 @@ ARG TARGETARCH
 ARG VERSION
 
 RUN set -ex; \
-    # 根据架构匹配文件名
     if [ "$TARGETARCH" = "amd64" ]; then \
         FILE_NAME="x86_64-unknown-linux-musl.zip"; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
@@ -17,22 +16,22 @@ RUN set -ex; \
     fi; \
     \
     URL="https://github.com/yujincheng08/rust-iptv-proxy/releases/download/${VERSION}/${FILE_NAME}"; \
-    echo "Downloading: ${URL}"; \
     \
-    # 下载并解压
     curl -L -f -o "package.zip" "${URL}" && \
     unzip "package.zip" && \
-    rm "package.zip"; \
-    \
-    # 移动解压出的 iptv 文件到当前目录
-    mv $(find . -type f -name "iptv" -print -quit) ./iptv && \
-    chmod +x iptv
+    # 找到二进制文件并重命名/移动到固定位置，方便下一阶段拷贝
+    mv $(find . -type f -name "iptv" -print -quit) /app/iptv_bin
 
-# 暴露端口
+FROM alpine:latest
+# 只保留程序运行必不可少的运行时库
+RUN apk add --no-cache ca-certificates libgcc libstdc++
+
+WORKDIR /app
+
+COPY --from=builder /app/iptv_bin ./iptv
+RUN chmod +x ./iptv
+
 EXPOSE 7878
 
-# 程序启动
 ENTRYPOINT ["./iptv", "--bind", "0.0.0.0:7878"]
-
-# 默认运行参数
 CMD ["--help"]
