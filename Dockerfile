@@ -20,7 +20,7 @@ RUN set -ex; \
     curl -L -f -o "package.zip" "${URL}" && \
     unzip "package.zip" && \
     # 找到二进制文件并重命名/移动到固定位置，方便下一阶段拷贝
-    mv $(find . -type f -name "iptv" -print -quit) /app/iptv_bin
+    mv iptv /app/iptv_bin
 
 FROM alpine:latest
 # 只保留程序运行必不可少的运行时库
@@ -28,8 +28,7 @@ RUN apk add --no-cache ca-certificates libgcc libstdc++
 
 WORKDIR /app
 
-COPY --from=builder /app/iptv_bin ./iptv
-RUN chmod +x ./iptv
+COPY --from=builder --chmod=755 /app/iptv_bin ./iptv
 
 EXPOSE 7878
 
