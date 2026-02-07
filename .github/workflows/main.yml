@@ -34,8 +34,15 @@ jobs:
           toolchain="$(ls -d ~/openwrt/toolchain-*)"
           if [ "${{ matrix.target }}" == "mipsel-unknown-linux-musl" ]; then
             res_dir="$(ls -d ${toolchain}/lib/gcc/*/*)"
-            cp ${res_dir}/libgcc.a ${res_dir}/libunwind.a
-            export RUSTFLAGS="-Ctarget-feature=+crt-static -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort -Clinker=$(ls ${toolchain}/bin/*-openwrt-linux-gcc) -L${toolchain}/lib -L${res_dir}"
+            if [ -f "${res_dir}/libgcc_eh.a" ]; then
+              cp ${res_dir}/libgcc_eh.a ${res_dir}/libunwind.a
+              unwind_flag="-C link-arg=-lgcc_eh"
+            else
+              cp ${res_dir}/libgcc.a ${res_dir}/libunwind.a
+              unwind_flag=""
+            fi
+            export STAGING_DIR="${toolchain}"
+            export RUSTFLAGS="-Ctarget-feature=+crt-static -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort -Clinker=$(ls ${toolchain}/bin/*-openwrt-linux-gcc) -L${toolchain}/lib -L${res_dir} ${unwind_flag}"
           else
             export RUSTFLAGS="-Ctarget-feature=+crt-static -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort -Clinker=$(ls ${toolchain}/bin/*-openwrt-linux-gcc)"
           fi
