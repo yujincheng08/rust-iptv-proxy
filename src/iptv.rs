@@ -1,8 +1,8 @@
 use crate::args::EffectiveArgs;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use des::{
-    cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyInit},
     TdesEde3,
+    cipher::{BlockEncryptMut, KeyInit, block_padding::Pkcs7},
 };
 #[cfg(not(any(target_os = "android", target_os = "fuchsia", target_os = "linux")))]
 use local_ip_address::list_afinet_netifas;

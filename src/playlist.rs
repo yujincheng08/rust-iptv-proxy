@@ -44,9 +44,10 @@ pub(crate) fn apply_alias(name: &str, config: &Config, compiled: &CompiledConfig
                     }
                     AliasRuleType::Regex => {
                         if let Some(re) = rule.regex.as_ref()
-                            && re.is_match(&current) {
-                                return re.replace_all(&current, rule.replace.as_str()).to_string();
-                            }
+                            && re.is_match(&current)
+                        {
+                            return re.replace_all(&current, rule.replace.as_str()).to_string();
+                        }
                     }
                 }
             }
@@ -62,9 +63,10 @@ pub(crate) fn apply_alias(name: &str, config: &Config, compiled: &CompiledConfig
                     }
                     AliasRuleType::Regex => {
                         if let Some(re) = rule.regex.as_ref()
-                            && re.is_match(&current) {
-                                current = re.replace_all(&current, rule.replace.as_str()).to_string();
-                            }
+                            && re.is_match(&current)
+                        {
+                            current = re.replace_all(&current, rule.replace.as_str()).to_string();
+                        }
                     }
                 }
             }
@@ -215,7 +217,9 @@ fn parse_attributes(head: &str) -> BTreeMap<String, String> {
 
 fn build_catchup_attr(attrs: &BTreeMap<String, String>) -> String {
     match (attrs.get("catchup"), attrs.get("catchup-source")) {
-        (Some(catchup), Some(source)) => format!(r#" catchup="{}" catchup-source="{}" "#, catchup, source),
+        (Some(catchup), Some(source)) => {
+            format!(r#" catchup="{}" catchup-source="{}" "#, catchup, source)
+        }
         _ => String::new(),
     }
 }
@@ -250,10 +254,7 @@ pub(crate) fn finalize_entries(
     assign_groups(entries, ctx)
 }
 
-fn assign_groups(
-    mut entries: Vec<ChannelEntry>,
-    ctx: &EntryBuildContext,
-) -> Vec<ChannelEntry> {
+fn assign_groups(mut entries: Vec<ChannelEntry>, ctx: &EntryBuildContext) -> Vec<ChannelEntry> {
     if ctx.compiled.group_entries.is_empty() {
         for entry in entries.iter_mut() {
             if entry.group.is_empty() {
@@ -322,7 +323,11 @@ fn sort_same_alias(entries: &mut [ChannelEntry], sorting: &SortingConfig) {
     entries.sort_by(|a, b| compare_same_alias(a, b, sorting));
 }
 
-fn compare_same_alias(a: &ChannelEntry, b: &ChannelEntry, sorting: &SortingConfig) -> std::cmp::Ordering {
+fn compare_same_alias(
+    a: &ChannelEntry,
+    b: &ChannelEntry,
+    sorting: &SortingConfig,
+) -> std::cmp::Ordering {
     for rule in sorting.same_alias.iter() {
         match rule.as_str() {
             "prefer_resolution" => {
@@ -404,13 +409,15 @@ pub(crate) fn resolve_group_for_alias(
 ) -> String {
     for entry in compiled.group_entries.iter() {
         if let Some(channels) = entry.channels.as_ref()
-            && channels.iter().any(|c| c == alias) {
-                return entry.group.clone();
-            }
+            && channels.iter().any(|c| c == alias)
+        {
+            return entry.group.clone();
+        }
         if let Some(regex) = entry.regex.as_ref()
-            && regex.is_match(alias) {
-                return entry.group.clone();
-            }
+            && regex.is_match(alias)
+        {
+            return entry.group.clone();
+        }
     }
     default_group.to_string()
 }

@@ -19,7 +19,6 @@ pub(crate) struct Config {
     pub(crate) xmltv: XmltvConfig,
 }
 
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 #[derive(Default)]
@@ -34,7 +33,6 @@ pub(crate) struct AppConfig {
     pub(crate) rtsp_proxy: bool,
     pub(crate) udp_proxy: bool,
 }
-
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -81,7 +79,6 @@ pub(crate) struct ResolutionConfig {
     pub(crate) default_score: i32,
     pub(crate) rules: Vec<ResolutionRule>,
 }
-
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct ResolutionRule {
@@ -142,7 +139,6 @@ pub(crate) struct PreferResolutionConfig {
     pub(crate) order: Vec<String>,
 }
 
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub(crate) struct TemplateConfig {
@@ -187,7 +183,6 @@ impl Default for AuthConfig {
 pub(crate) struct ManageConfig {
     pub(crate) enabled: bool,
 }
-
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]

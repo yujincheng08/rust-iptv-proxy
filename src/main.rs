@@ -1,10 +1,9 @@
 use actix_web::{
-    get,
+    App, HttpRequest, HttpResponse, HttpServer, Responder, get,
     http::header,
     web::{Data, Path, Query},
-    App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use argh::FromArgs;
 use chrono::{FixedOffset, Local, TimeZone, Utc};
 use log::{debug, warn};
@@ -18,9 +17,9 @@ use std::{
     sync::{Mutex, OnceLock, RwLock},
 };
 use xml::{
+    EventReader,
     reader::XmlEvent as XmlReadEvent,
     writer::{EmitterConfig, XmlEvent as XmlWriteEvent},
-    EventReader,
 };
 
 use tokio::task::JoinSet;
@@ -28,9 +27,10 @@ use tokio::task::JoinSet;
 fn extract_token(req: &HttpRequest) -> Option<String> {
     if let Some(auth) = req.headers().get(header::AUTHORIZATION)
         && let Ok(auth_str) = auth.to_str()
-            && let Some(token) = auth_str.strip_prefix("Bearer ") {
-                return Some(token.to_string());
-            }
+        && let Some(token) = auth_str.strip_prefix("Bearer ")
+    {
+        return Some(token.to_string());
+    }
     if let Some(token) = req
         .headers()
         .get("X-Api-Token")
@@ -66,20 +66,20 @@ mod args;
 use args::{Args, EffectiveArgs};
 
 mod iptv;
-use iptv::{get_channels, get_icon, Channel};
+use iptv::{Channel, get_channels, get_icon};
 
 mod proxy;
 
 mod config;
 use config::{
-    build_templates, compile_config, load_config, should_protect, CompiledConfig, Config,
-    ManageTestResult,
+    CompiledConfig, Config, ManageTestResult, build_templates, compile_config, load_config,
+    should_protect,
 };
 
 mod playlist;
 use playlist::{
-    add_alias_and_resolution_for_name, apply_alias, finalize_entries, parse_m3u_playlist,
-    render_playlist, resolve_group_for_alias, ChannelEntry, EntryBuildContext,
+    ChannelEntry, EntryBuildContext, add_alias_and_resolution_for_name, apply_alias,
+    finalize_entries, parse_m3u_playlist, render_playlist, resolve_group_for_alias,
 };
 
 static OLD_PLAYLIST: Mutex<Option<String>> = Mutex::new(None);
@@ -97,7 +97,6 @@ struct AppState {
     config_path: Option<String>,
     runtime: RwLock<RuntimeConfig>,
 }
-
 
 fn to_xmltv_time(unix_time: i64) -> Result<String> {
     match Utc.timestamp_millis_opt(unix_time) {
@@ -257,22 +256,24 @@ async fn xmltv(state: Data<AppState>, req: HttpRequest) -> impl Responder {
     } else {
         Vec::new()
     };
-    let xml = get_channels(&state.args, true, &scheme, &host).await.and_then(|mut ch| {
-        if use_alias_name {
-            let runtime = match state.runtime.read() {
-                Ok(guard) => guard,
-                Err(_) => return Err(anyhow!("Config lock poisoned")),
-            };
-            for channel in ch.iter_mut() {
-                let alias = apply_alias(&channel.name, &runtime.config, &runtime.compiled);
-                let alias = alias.trim().to_string();
-                if !alias.is_empty() {
-                    channel.name = alias;
+    let xml = get_channels(&state.args, true, &scheme, &host)
+        .await
+        .and_then(|mut ch| {
+            if use_alias_name {
+                let runtime = match state.runtime.read() {
+                    Ok(guard) => guard,
+                    Err(_) => return Err(anyhow!("Config lock poisoned")),
+                };
+                for channel in ch.iter_mut() {
+                    let alias = apply_alias(&channel.name, &runtime.config, &runtime.compiled);
+                    let alias = alias.trim().to_string();
+                    if !alias.is_empty() {
+                        channel.name = alias;
+                    }
                 }
             }
-        }
-        to_xmltv(ch, extra_readers)
-    });
+            to_xmltv(ch, extra_readers)
+        });
     match xml {
         Err(e) => {
             if let Some(old_xmltv) = OLD_XMLTV.try_lock().ok().and_then(|f| f.to_owned()) {
@@ -372,8 +373,7 @@ fn build_local_entries(
         } else {
             c.rtsp.clone()
         };
-        let (catchup, catchup_source, catchup_attr) = if let Some(url) = c.time_shift_url.as_ref()
-        {
+        let (catchup, catchup_source, catchup_attr) = if let Some(url) = c.time_shift_url.as_ref() {
             let source = format!("{}&playseek={}", url, playseek);
             let attr = format!(
                 r#" catchup="default" catchup-source="{}&playseek={}" "#,
@@ -442,14 +442,7 @@ async fn playlist_handler(state: Data<AppState>, req: HttpRequest) -> impl Respo
             }
         }
         Ok(ch) => {
-            let mut entries = build_local_entries(
-                ch,
-                &state.args,
-                &scheme,
-                &host,
-                playseek,
-                0,
-            );
+            let mut entries = build_local_entries(ch, &state.args, &scheme, &host, playseek, 0);
             if !state.args.extra_playlist.is_empty() {
                 let mut set = JoinSet::new();
                 for (i, u) in state.args.extra_playlist.iter().enumerate() {
@@ -461,8 +454,7 @@ async fn playlist_handler(state: Data<AppState>, req: HttpRequest) -> impl Respo
                     match res {
                         Ok((i, Ok(s))) => {
                             let source = format!("extra:{}", i);
-                            let mut extra_entries =
-                                parse_m3u_playlist(&s, &source, index);
+                            let mut extra_entries = parse_m3u_playlist(&s, &source, index);
                             index += extra_entries.len();
                             entries.append(&mut extra_entries);
                         }
@@ -511,20 +503,19 @@ async fn rtsp(
 ) -> impl Responder {
     let path: String = req.match_info().query("tail").into();
     let mut param = req.query_string().to_string();
-    if !params.contains_key("playseek")
-        && params.contains_key("utc") {
-            let start = params
-                .get("utc")
-                .map(|utc| utc.parse::<i64>().expect("Invalid number") * 1000)
-                .map(|utc| to_xmltv_time(utc).unwrap())
-                .unwrap();
-            let end = params
-                .get("lutc")
-                .map(|lutc| lutc.parse::<i64>().expect("Invalid number") * 1000)
-                .map(|lutc| to_xmltv_time(lutc).unwrap())
-                .unwrap_or(to_xmltv_time(Local::now().timestamp_millis()).unwrap());
-            param = format!("{}&playseek={}-{}", param, start, end);
-        }
+    if !params.contains_key("playseek") && params.contains_key("utc") {
+        let start = params
+            .get("utc")
+            .map(|utc| utc.parse::<i64>().expect("Invalid number") * 1000)
+            .map(|utc| to_xmltv_time(utc).unwrap())
+            .unwrap();
+        let end = params
+            .get("lutc")
+            .map(|lutc| lutc.parse::<i64>().expect("Invalid number") * 1000)
+            .map(|lutc| to_xmltv_time(lutc).unwrap())
+            .unwrap_or(to_xmltv_time(Local::now().timestamp_millis()).unwrap());
+        param = format!("{}&playseek={}-{}", param, start, end);
+    }
     HttpResponse::Ok().streaming(proxy::rtsp(
         format!("rtsp://{}?{}", path, param),
         state.args.interface.clone(),
@@ -567,11 +558,11 @@ async fn manage_index(state: Data<AppState>, req: HttpRequest) -> impl Responder
     if !check_auth(&req, &runtime.config, "manage") {
         return HttpResponse::Unauthorized().body("Unauthorized");
     }
-    let start = START_TIME.get().cloned().unwrap_or(std::time::SystemTime::now());
-    let uptime = start
-        .elapsed()
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let start = START_TIME
+        .get()
+        .cloned()
+        .unwrap_or(std::time::SystemTime::now());
+    let uptime = start.elapsed().map(|d| d.as_secs()).unwrap_or(0);
     let token = extract_token(&req).unwrap_or_default();
     let token_q = if token.is_empty() {
         String::new()
@@ -686,7 +677,11 @@ async fn manage_reload(state: Data<AppState>, req: HttpRequest) -> impl Responde
 }
 
 #[get("/manage/test")]
-async fn manage_test(state: Data<AppState>, req: HttpRequest, params: Query<BTreeMap<String, String>>) -> impl Responder {
+async fn manage_test(
+    state: Data<AppState>,
+    req: HttpRequest,
+    params: Query<BTreeMap<String, String>>,
+) -> impl Responder {
     let runtime = match state.runtime.read() {
         Ok(guard) => guard,
         Err(_) => {
@@ -708,7 +703,11 @@ async fn manage_test(state: Data<AppState>, req: HttpRequest, params: Query<BTre
         compiled: &runtime.compiled,
     };
     let (alias, score, label) = add_alias_and_resolution_for_name(&name, &ctx);
-    let group = resolve_group_for_alias(&alias, &runtime.compiled, &runtime.config.groups.default_group);
+    let group = resolve_group_for_alias(
+        &alias,
+        &runtime.compiled,
+        &runtime.config.groups.default_group,
+    );
     let res = ManageTestResult {
         input: name,
         alias_name: alias,
@@ -717,13 +716,19 @@ async fn manage_test(state: Data<AppState>, req: HttpRequest, params: Query<BTre
         group,
     };
     match serde_json::to_string_pretty(&res) {
-        Ok(text) => HttpResponse::Ok().content_type("application/json").body(text),
+        Ok(text) => HttpResponse::Ok()
+            .content_type("application/json")
+            .body(text),
         Err(e) => HttpResponse::InternalServerError().body(format!("Error: {}", e)),
     }
 }
 
 #[get("/manage/channels")]
-async fn manage_channels(state: Data<AppState>, req: HttpRequest, params: Query<BTreeMap<String, String>>) -> impl Responder {
+async fn manage_channels(
+    state: Data<AppState>,
+    req: HttpRequest,
+    params: Query<BTreeMap<String, String>>,
+) -> impl Responder {
     let (enabled, need_auth) = match state.runtime.read() {
         Ok(guard) => (
             guard.config.manage.enabled,
@@ -753,14 +758,7 @@ async fn manage_channels(state: Data<AppState>, req: HttpRequest, params: Query<
         Ok(ch) => ch,
         Err(e) => return HttpResponse::InternalServerError().body(format!("Error: {}", e)),
     };
-    let mut entries = build_local_entries(
-        channels,
-        &state.args,
-        &scheme,
-        &host,
-        playseek,
-        0,
-    );
+    let mut entries = build_local_entries(channels, &state.args, &scheme, &host, playseek, 0);
     if !state.args.extra_playlist.is_empty() {
         let mut set = JoinSet::new();
         for (i, u) in state.args.extra_playlist.iter().enumerate() {
@@ -794,17 +792,24 @@ async fn manage_channels(state: Data<AppState>, req: HttpRequest, params: Query<
     };
     let mut entries = finalize_entries(entries, &ctx);
     if let Some(limit) = params.get("limit").and_then(|v| v.parse::<usize>().ok())
-        && entries.len() > limit {
-            entries.truncate(limit);
-        }
+        && entries.len() > limit
+    {
+        entries.truncate(limit);
+    }
     match serde_json::to_string_pretty(&entries) {
-        Ok(text) => HttpResponse::Ok().content_type("application/json").body(text),
+        Ok(text) => HttpResponse::Ok()
+            .content_type("application/json")
+            .body(text),
         Err(e) => HttpResponse::InternalServerError().body(format!("Error: {}", e)),
     }
 }
 
 #[get("/manage/channels/html")]
-async fn manage_channels_html(state: Data<AppState>, req: HttpRequest, params: Query<BTreeMap<String, String>>) -> impl Responder {
+async fn manage_channels_html(
+    state: Data<AppState>,
+    req: HttpRequest,
+    params: Query<BTreeMap<String, String>>,
+) -> impl Responder {
     let (enabled, need_auth) = match state.runtime.read() {
         Ok(guard) => (
             guard.config.manage.enabled,
@@ -834,14 +839,7 @@ async fn manage_channels_html(state: Data<AppState>, req: HttpRequest, params: Q
         Ok(ch) => ch,
         Err(e) => return HttpResponse::InternalServerError().body(format!("Error: {}", e)),
     };
-    let mut entries = build_local_entries(
-        channels,
-        &state.args,
-        &scheme,
-        &host,
-        playseek,
-        0,
-    );
+    let mut entries = build_local_entries(channels, &state.args, &scheme, &host, playseek, 0);
     if !state.args.extra_playlist.is_empty() {
         let mut set = JoinSet::new();
         for (i, u) in state.args.extra_playlist.iter().enumerate() {
@@ -875,9 +873,10 @@ async fn manage_channels_html(state: Data<AppState>, req: HttpRequest, params: Q
     };
     let mut entries = finalize_entries(entries, &ctx);
     if let Some(limit) = params.get("limit").and_then(|v| v.parse::<usize>().ok())
-        && entries.len() > limit {
-            entries.truncate(limit);
-        }
+        && entries.len() > limit
+    {
+        entries.truncate(limit);
+    }
 
     let token = extract_token(&req).unwrap_or_default();
     let token_q = if token.is_empty() {
@@ -971,11 +970,11 @@ async fn status(state: Data<AppState>, req: HttpRequest) -> impl Responder {
     if !need_auth {
         return HttpResponse::Unauthorized().body("Unauthorized");
     }
-    let start = START_TIME.get().cloned().unwrap_or(std::time::SystemTime::now());
-    let uptime = start
-        .elapsed()
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let start = START_TIME
+        .get()
+        .cloned()
+        .unwrap_or(std::time::SystemTime::now());
+    let uptime = start.elapsed().map(|d| d.as_secs()).unwrap_or(0);
     let (config_path, protected, token_set, alias_rules, group_count, token, manage_enabled) =
         match state.runtime.read() {
             Ok(guard) => (
