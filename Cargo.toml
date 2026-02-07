@@ -6,7 +6,7 @@ version = "0.2.4"
 [features]
 http2 = ["reqwest/http2"]
 tls = ["reqwest/native-tls"]
-rustls = ["reqwest/rustls-tls"]
+rustls = ["reqwest/rustls"]
 
 [dependencies]
 actix-web = { version = "4.12", default-features = false, features = ["macros"] }
@@ -21,14 +21,14 @@ env_logger = { version = "0.11", default-features = false, features = [
 ] }
 futures-core = "0.3"
 futures-util = "0.3"
-handlebars = "5"
+handlebars = "6"
 hex = "0.4"
 local-ip-address = "0.6"
 log = "0.4"
-md5 = "0.7"
-rand = "0.8"
+md5 = "0.8"
+rand = "0.9"
 regex-lite = "0.1"
-reqwest = { version = "0.12", default-features = false, features = [
+reqwest = { version = "0.13", default-features = false, features = [
     "cookies",
     "json",
 ] }
@@ -36,11 +36,11 @@ retina = { git = "https://github.com/yujincheng08/retina.git", branch = "iptv", 
 rtp-rs = "0.6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-socket2 = "0.5"
+socket2 = "0.6"
 tokio = "1"
 tokio-util = { version = "0.7.18", features = ["codec", "net"] }
-toml = "0.8"
-xml-rs = "0.8.28"
+toml = "0.9"
+xml-rs = "1.0.0"
 
 [profile.release]
 opt-level = "z"

@@ -7,7 +7,6 @@ use des::{
 #[cfg(not(any(target_os = "android", target_os = "fuchsia", target_os = "linux")))]
 use local_ip_address::list_afinet_netifas;
 use log::{debug, info};
-use rand::Rng;
 use regex_lite::Regex;
 use reqwest::Client;
 use serde::Deserialize;
@@ -151,7 +150,7 @@ pub(crate) async fn get_channels(
     }?;
     let data = format!(
         "{}${token}${user}${imei}${ip}${mac}$$CTC",
-        rand::thread_rng().gen_range(0..10000000),
+        rand::random_range(0..10000000),
     );
     let auth = hex::encode_upper(enc.encrypt_padded_vec_mut::<Pkcs7>(data.as_bytes()));
 
