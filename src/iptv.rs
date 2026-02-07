@@ -1,13 +1,12 @@
-use crate::args::Args;
-use anyhow::{anyhow, Result};
+use crate::args::EffectiveArgs;
+use anyhow::{Result, anyhow};
 use des::{
-    cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyInit},
     TdesEde3,
+    cipher::{BlockEncryptMut, KeyInit, block_padding::Pkcs7},
 };
 #[cfg(not(any(target_os = "android", target_os = "fuchsia", target_os = "linux")))]
 use local_ip_address::list_afinet_netifas;
 use log::{debug, info};
-use rand::Rng;
 use regex_lite::Regex;
 use reqwest::Client;
 use serde::Deserialize;
@@ -42,7 +41,7 @@ fn get_client_with_if(#[allow(unused_variables)] if_name: Option<&str>) -> Resul
     Ok(client.build()?)
 }
 
-async fn get_base_url(client: &Client, args: &Args) -> Result<String> {
+async fn get_base_url(client: &Client, args: &EffectiveArgs) -> Result<String> {
     let user = args.user.as_str();
 
     let params = [("Action", "Login"), ("return_type", "1"), ("UserID", user)];
@@ -108,7 +107,7 @@ struct Bill {
 }
 
 pub(crate) async fn get_channels(
-    args: &Args,
+    args: &EffectiveArgs,
     need_epg: bool,
     scheme: &str,
     host: &str,
@@ -140,9 +139,8 @@ pub(crate) async fn get_channels(
 
     debug!("Got token {token}");
 
-    let enc = ecb::Encryptor::<TdesEde3>::new_from_slice(
-        format!("{:X}", md5::compute(passwd.as_bytes()))[0..24].as_bytes(),
-    );
+    let md5_hex = format!("{:X}", md5::compute(passwd.as_bytes()));
+    let enc = ecb::Encryptor::<TdesEde3>::new_from_slice(&md5_hex.as_bytes()[0..24]);
     let enc = match enc {
         Ok(enc) => Ok(enc),
         Err(e) => Err(std::io::Error::new(
@@ -152,7 +150,7 @@ pub(crate) async fn get_channels(
     }?;
     let data = format!(
         "{}${token}${user}${imei}${ip}${mac}$$CTC",
-        rand::thread_rng().gen_range(0..10000000),
+        rand::random_range(0..10000000),
     );
     let auth = hex::encode_upper(enc.encrypt_padded_vec_mut::<Pkcs7>(data.as_bytes()));
 
@@ -293,7 +291,7 @@ pub(crate) async fn get_channels(
     Ok(channels)
 }
 
-pub(crate) async fn get_icon(args: &Args, id: &str) -> Result<Vec<u8>> {
+pub(crate) async fn get_icon(args: &EffectiveArgs, id: &str) -> Result<Vec<u8>> {
     let client = get_client_with_if(args.interface.as_deref())?;
 
     let base_url = get_base_url(&client, args).await?;

@@ -1,0 +1,58 @@
+# GitHub Dependabot configuration for nssm-rs
+# Automatically checks for dependency updates and creates pull requests
+
+version: 2
+updates:
+  # Cargo dependencies (Rust packages)
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    # Limit the number of open pull requests for Cargo dependencies
+    open-pull-requests-limit: 5
+    # Set commit message prefix
+    commit-message:
+      prefix: "cargo"
+      prefix-development: "cargo"
+      include: "scope"
+    # Group minor and patch updates together
+    groups:
+      cargo-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Ignore specific dependencies if needed (uncomment when needed)
+    # ignore:
+    #   - dependency-name: "windows"
+    #     update-types: ["version-update:semver-major"]
+    # reviewers:
+    #   - "bigtan"
+    assignees:
+      - "bigtan"
+    labels:
+      - "Dependabot"
+
+
+  # GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    # reviewers:
+    #   - "bigtan"
+    assignees:
+      - "bigtan"
+    labels:
+        - "Dependabot"

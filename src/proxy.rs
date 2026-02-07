@@ -10,7 +10,7 @@ use log::{error, info};
 use reqwest::Url;
 use retina::client::{PacketItem, Session, SessionOptions};
 use rtp_rs::RtpReader;
-use tokio::{net::UdpSocket, sync::mpsc};
+use tokio::net::UdpSocket;
 use tokio_util::bytes::Buf;
 use tokio_util::codec::BytesCodec;
 use tokio_util::udp::UdpFramed;
@@ -64,30 +64,23 @@ pub(crate) fn rtsp(url: String, if_name: Option<String>) -> impl Stream<Item = R
         }
         let mut playing = session.play(Default::default()).await?;
 
-        let (tx, mut rx) = mpsc::channel(128);
-
-        tokio::spawn(async move {
-            let mut seq = 0u16;
-            while let Some(item) = playing.next().await {
-                if let Ok(PacketItem::Rtp(stream)) = item {
-                    if !filter_reordered_seq(&mut seq, stream.sequence_number()) ||
-                        tx.send(stream.into_payload_bytes()).await.is_ok() {
-                        continue;
+        let mut seq = 0u16;
+        while let Some(item) = playing.next().await {
+            match item {
+                Ok(PacketItem::Rtp(stream)) => {
+                    let next = stream.sequence_number();
+                    if filter_reordered_seq(&mut seq, next) {
+                        yield Ok(stream.into_payload_bytes());
                     }
                 }
-                break;
-            }
-        });
-
-        loop {
-            let stream = rx.recv().await;
-            if let Some(stream) = stream {
-                yield Ok(stream);
-            } else {
-                error!("Connection closed");
-                break;
+                Ok(_) => {}
+                Err(e) => {
+                    error!("RTSP read error: {}", e);
+                    break;
+                }
             }
         }
+        error!("Connection closed");
     }
 }
 
@@ -140,38 +133,31 @@ pub(crate) fn udp(
         info!("Udp proxy joined {}", multi_addr);
 
         let mut frames = UdpFramed::new(socket, BytesCodec::new());
-        let (tx, mut rx) = mpsc::channel(128);
-
-        tokio::spawn(async move {
-            let mut seq = 0u16;
-            while let Some(item) = frames.next().await {
-                if let Ok((bytes, _)) = item {
+        let mut seq = 0u16;
+        while let Some(item) = frames.next().await {
+            match item {
+                Ok((bytes, _)) => {
                     let mut bytes = bytes.freeze();
                     if let Ok(rtp) = RtpReader::new(bytes.as_ref()) {
                         let next = rtp.sequence_number().into();
                         bytes.advance(rtp.payload_offset());
-                        if !filter_reordered_seq(&mut seq, next) || tx.send(bytes).await.is_ok() {
-                            continue;
+                        if filter_reordered_seq(&mut seq, next) {
+                            yield Ok(bytes);
                         }
                     }
                 }
-                frames.get_mut().leave_multicast_v4(
-                    *multi_addr.ip(),
-                    interface,
-                ).ok();
-                info!("Udp proxy left {}", multi_addr);
-                break;
-            }
-        });
-
-        loop {
-            let stream = rx.recv().await;
-            if let Some(stream) = stream {
-                yield Ok(stream);
-            } else {
-                error!("Connection closed");
-                break;
+                Err(e) => {
+                    error!("UDP read error: {}", e);
+                    break;
+                }
             }
         }
+
+        frames
+            .get_mut()
+            .leave_multicast_v4(*multi_addr.ip(), interface)
+            .ok();
+        info!("Udp proxy left {}", multi_addr);
+        error!("Connection closed");
     }
 }
