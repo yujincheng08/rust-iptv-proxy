@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  LATEST_TAG: "0.2.3"
+  LATEST_TAG: "0.2.4"
 
 jobs:
   build:
