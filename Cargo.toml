@@ -1,10 +1,13 @@
 [package]
 edition = "2021"
 name = "iptv"
-version = "0.2.1"
+version = "0.2.4"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+handlebars = "5"
 argh = { git = "https://github.com/google/argh.git", default-features = false }
 des = "0.8"
 ecb = { version = "0.1", features = ["alloc", "block-padding"] }

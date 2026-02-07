@@ -1,4 +1,4 @@
-use crate::args::Args;
+use crate::args::EffectiveArgs;
 use anyhow::{anyhow, Result};
 use des::{
     cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyInit},
@@ -42,7 +42,7 @@ fn get_client_with_if(#[allow(unused_variables)] if_name: Option<&str>) -> Resul
     Ok(client.build()?)
 }
 
-async fn get_base_url(client: &Client, args: &Args) -> Result<String> {
+async fn get_base_url(client: &Client, args: &EffectiveArgs) -> Result<String> {
     let user = args.user.as_str();
 
     let params = [("Action", "Login"), ("return_type", "1"), ("UserID", user)];
@@ -108,7 +108,7 @@ struct Bill {
 }
 
 pub(crate) async fn get_channels(
-    args: &Args,
+    args: &EffectiveArgs,
     need_epg: bool,
     scheme: &str,
     host: &str,
@@ -293,7 +293,7 @@ pub(crate) async fn get_channels(
     Ok(channels)
 }
 
-pub(crate) async fn get_icon(args: &Args, id: &str) -> Result<Vec<u8>> {
+pub(crate) async fn get_icon(args: &EffectiveArgs, id: &str) -> Result<Vec<u8>> {
     let client = get_client_with_if(args.interface.as_deref())?;
 
     let base_url = get_base_url(&client, args).await?;
