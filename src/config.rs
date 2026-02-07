@@ -6,6 +6,7 @@ use std::fs;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
+#[derive(Default)]
 pub(crate) struct Config {
     pub(crate) app: AppConfig,
     pub(crate) alias: AliasConfig,
@@ -18,24 +19,10 @@ pub(crate) struct Config {
     pub(crate) xmltv: XmltvConfig,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            app: AppConfig::default(),
-            alias: AliasConfig::default(),
-            resolution: ResolutionConfig::default(),
-            groups: GroupConfig::default(),
-            sorting: SortingConfig::default(),
-            template: TemplateConfig::default(),
-            auth: AuthConfig::default(),
-            manage: ManageConfig::default(),
-            xmltv: XmltvConfig::default(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
+#[derive(Default)]
 pub(crate) struct AppConfig {
     pub(crate) user: Option<String>,
     pub(crate) passwd: Option<String>,
@@ -48,21 +35,6 @@ pub(crate) struct AppConfig {
     pub(crate) udp_proxy: bool,
 }
 
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            user: None,
-            passwd: None,
-            mac: None,
-            imei: None,
-            bind: None,
-            address: None,
-            interface: None,
-            rtsp_proxy: false,
-            udp_proxy: false,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -104,19 +76,12 @@ pub(crate) struct AliasRule {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
+#[derive(Default)]
 pub(crate) struct ResolutionConfig {
     pub(crate) default_score: i32,
     pub(crate) rules: Vec<ResolutionRule>,
 }
 
-impl Default for ResolutionConfig {
-    fn default() -> Self {
-        Self {
-            default_score: 0,
-            rules: Vec::new(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct ResolutionRule {
@@ -172,15 +137,11 @@ impl Default for SortingConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
+#[derive(Default)]
 pub(crate) struct PreferResolutionConfig {
     pub(crate) order: Vec<String>,
 }
 
-impl Default for PreferResolutionConfig {
-    fn default() -> Self {
-        Self { order: Vec::new() }
-    }
-}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -222,15 +183,11 @@ impl Default for AuthConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
+#[derive(Default)]
 pub(crate) struct ManageConfig {
     pub(crate) enabled: bool,
 }
 
-impl Default for ManageConfig {
-    fn default() -> Self {
-        Self { enabled: false }
-    }
-}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]

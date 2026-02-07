@@ -43,11 +43,10 @@ pub(crate) fn apply_alias(name: &str, config: &Config, compiled: &CompiledConfig
                         }
                     }
                     AliasRuleType::Regex => {
-                        if let Some(re) = rule.regex.as_ref() {
-                            if re.is_match(&current) {
+                        if let Some(re) = rule.regex.as_ref()
+                            && re.is_match(&current) {
                                 return re.replace_all(&current, rule.replace.as_str()).to_string();
                             }
-                        }
                     }
                 }
             }
@@ -62,11 +61,10 @@ pub(crate) fn apply_alias(name: &str, config: &Config, compiled: &CompiledConfig
                         }
                     }
                     AliasRuleType::Regex => {
-                        if let Some(re) = rule.regex.as_ref() {
-                            if re.is_match(&current) {
+                        if let Some(re) = rule.regex.as_ref()
+                            && re.is_match(&current) {
                                 current = re.replace_all(&current, rule.replace.as_str()).to_string();
                             }
-                        }
                     }
                 }
             }
@@ -146,7 +144,7 @@ pub(crate) fn parse_m3u_playlist(
             group: attrs
                 .get("group-title")
                 .cloned()
-                .unwrap_or_else(|| String::new()),
+                .unwrap_or_else(String::new),
             tvg_id: attrs.get("tvg-id").cloned().unwrap_or_default(),
             tvg_name: attrs.get("tvg-name").cloned().unwrap_or_default(),
             tvg_logo: attrs.get("tvg-logo").cloned().unwrap_or_default(),
@@ -405,16 +403,14 @@ pub(crate) fn resolve_group_for_alias(
     default_group: &str,
 ) -> String {
     for entry in compiled.group_entries.iter() {
-        if let Some(channels) = entry.channels.as_ref() {
-            if channels.iter().any(|c| c == alias) {
+        if let Some(channels) = entry.channels.as_ref()
+            && channels.iter().any(|c| c == alias) {
                 return entry.group.clone();
             }
-        }
-        if let Some(regex) = entry.regex.as_ref() {
-            if regex.is_match(alias) {
+        if let Some(regex) = entry.regex.as_ref()
+            && regex.is_match(alias) {
                 return entry.group.clone();
             }
-        }
     }
     default_group.to_string()
 }

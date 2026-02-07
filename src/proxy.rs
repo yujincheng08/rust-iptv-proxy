@@ -69,12 +69,11 @@ pub(crate) fn rtsp(url: String, if_name: Option<String>) -> impl Stream<Item = R
         tokio::spawn(async move {
             let mut seq = 0u16;
             while let Some(item) = playing.next().await {
-                if let Ok(PacketItem::Rtp(stream)) = item {
-                    if !filter_reordered_seq(&mut seq, stream.sequence_number()) ||
-                        tx.send(stream.into_payload_bytes()).await.is_ok() {
+                if let Ok(PacketItem::Rtp(stream)) = item
+                    && (!filter_reordered_seq(&mut seq, stream.sequence_number()) ||
+                        tx.send(stream.into_payload_bytes()).await.is_ok()) {
                         continue;
                     }
-                }
                 break;
             }
         });
