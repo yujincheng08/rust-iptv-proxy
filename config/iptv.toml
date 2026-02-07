@@ -51,6 +51,11 @@ replace = "广东卫视"
 
 [[alias.rules]]
 type = "regex"
+pattern = "^CGTN.*$"
+replace = "CGTN"
+
+[[alias.rules]]
+type = "regex"
 pattern = "(?i)^(.+?)(?:[-\\s]|高清|超清|超高清|4K|[25]0P|时移|专用)*$"
 replace = "$1"
 
