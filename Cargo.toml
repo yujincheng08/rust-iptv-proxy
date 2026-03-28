@@ -32,7 +32,7 @@ reqwest = { version = "0.13", default-features = false, features = [
     "cookies",
     "json",
 ] }
-retina = { git = "https://github.com/yujincheng08/retina.git", branch = "iptv", default-features = false }
+retina = { git = "https://github.com/bigtan/retina.git", branch = "codex/iptv-patches", default-features = false }
 rtp-rs = "0.6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
