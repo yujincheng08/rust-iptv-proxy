@@ -9,11 +9,11 @@ tls = ["reqwest/native-tls"]
 rustls = ["reqwest/rustls"]
 
 [dependencies]
-actix-web = { version = "4.12", default-features = false, features = ["macros"] }
-anyhow = "1.0.101"
-clap = { version = "4.5", features = ["derive"] }
+actix-web = { version = "4.13", default-features = false, features = ["macros"] }
+anyhow = "1.0.102"
 async-stream = "0.3"
-chrono = "0.4.43"
+chrono = "0.4.44"
+clap = { version = "4.6", features = ["derive"] }
 des = "0.8"
 ecb = { version = "0.1", features = ["alloc", "block-padding"] }
 env_logger = { version = "0.11", default-features = false, features = [
@@ -26,7 +26,7 @@ hex = "0.4"
 local-ip-address = "0.6"
 log = "0.4"
 md5 = "0.8"
-rand = "0.9"
+rand = "0.10"
 regex-lite = "0.1"
 reqwest = { version = "0.13", default-features = false, features = [
     "cookies",
@@ -39,7 +39,7 @@ serde_json = "1"
 socket2 = "0.6"
 tokio = "1"
 tokio-util = { version = "0.7.18", features = ["codec", "net"] }
-toml = "0.9"
+toml = "1.1"
 xml-rs = "1.0.0"
 
 [profile.release]

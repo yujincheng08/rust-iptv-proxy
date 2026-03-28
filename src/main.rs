@@ -537,13 +537,13 @@ async fn manage_config(state: Data<AppState>, req: HttpRequest) -> impl Responde
         return HttpResponse::Unauthorized().body("Unauthorized");
     }
     let mut safe = runtime.config.clone();
-    if !safe.app.user.is_none() {
+    if safe.app.user.is_some() {
         safe.app.user = Some("REDACTED".to_string());
     }
-    if !safe.app.passwd.is_none() {
+    if safe.app.passwd.is_some() {
         safe.app.passwd = Some("REDACTED".to_string());
     }
-    if !safe.app.mac.is_none() {
+    if safe.app.mac.is_some() {
         safe.app.mac = Some("REDACTED".to_string());
     }
     if !safe.auth.token.is_empty() {
@@ -964,8 +964,11 @@ async fn manage_channels_html(
     };
 
     let count = entries.len();
-    let limit = params.get("limit").and_then(|v| v.parse::<usize>().ok()).unwrap_or(entries.len());
-    
+    let limit = params
+        .get("limit")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(entries.len());
+
     let rows = entries
         .iter()
         .map(|e| {
