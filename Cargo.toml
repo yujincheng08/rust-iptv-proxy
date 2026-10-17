@@ -40,7 +40,7 @@ tls = ["reqwest/native-tls"]
 rustls = ["reqwest/rustls-tls"]
 
 [profile.release]
-opt-level = "z"
+opt-level = "s"
 lto = true
 strip = true
 panic = "abort"
