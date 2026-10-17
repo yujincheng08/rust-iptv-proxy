@@ -1090,7 +1090,6 @@ dependencies = [
  "serde",
  "socket2",
  "tokio",
- "tokio-util",
  "xml-rs",
 ]
 

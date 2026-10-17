@@ -307,25 +307,26 @@ async fn rtsp(
 ) -> impl Responder {
     let path: String = req.match_info().query("tail").into();
     let mut param = req.query_string().to_string();
-    if !params.contains_key("playseek") {
-        if params.contains_key("utc") {
-            let start = params
-                .get("utc")
-                .map(|utc| utc.parse::<i64>().expect("Invalid number") * 1000)
-                .map(|utc| to_xmltv_time(utc).unwrap())
-                .unwrap();
-            let end = params
-                .get("lutc")
-                .map(|lutc| lutc.parse::<i64>().expect("Invalid number") * 1000)
-                .map(|lutc| to_xmltv_time(lutc).unwrap())
-                .unwrap_or(to_xmltv_time(Local::now().timestamp_millis()).unwrap());
-            param = format!("{}&playseek={}-{}", param, start, end);
-        }
+    if !params.contains_key("playseek") && params.contains_key("utc") {
+        let start = params
+            .get("utc")
+            .map(|utc| utc.parse::<i64>().expect("Invalid number") * 1000)
+            .map(|utc| to_xmltv_time(utc).unwrap())
+            .unwrap();
+        let end = params
+            .get("lutc")
+            .map(|lutc| lutc.parse::<i64>().expect("Invalid number") * 1000)
+            .map(|lutc| to_xmltv_time(lutc).unwrap())
+            .unwrap_or(to_xmltv_time(Local::now().timestamp_millis()).unwrap());
+        param = format!("{}&playseek={}-{}", param, start, end);
     }
-    HttpResponse::Ok().streaming(proxy::rtsp(
-        format!("rtsp://{}?{}", path, param),
-        args.interface.clone(),
-    ))
+    HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, "video/mpeg"))
+        .insert_header((header::CACHE_CONTROL, "no-cache"))
+        .streaming(proxy::rtsp(
+            format!("rtsp://{}?{}", path, param),
+            args.interface.clone(),
+        ))
 }
 
 #[get("/udp/{addr}")]
@@ -335,7 +336,10 @@ async fn udp(args: Data<Args>, addr: Path<String>) -> impl Responder {
         Ok(addr) => addr,
         Err(e) => return HttpResponse::BadRequest().body(format!("Error: {}", e)),
     };
-    HttpResponse::Ok().streaming(proxy::udp(addr, args.interface.clone()))
+    HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, "video/mpeg"))
+        .insert_header((header::CACHE_CONTROL, "no-cache"))
+        .streaming(proxy::udp(addr, args.interface.clone()))
 }
 
 fn usage(cmd: &str) -> std::io::Result<()> {
