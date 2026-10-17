@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [ master ]
-    tags: [ v* ]
+    tags: [ "*" ]
   pull_request:
 
 jobs:
@@ -32,20 +32,98 @@ jobs:
           mkdir -p ~/openwrt
           wget "${{ matrix.sdk }}" -qO- | tar --strip-components 1 -C ~/openwrt -xv --zstd
           toolchain="$(ls -d ~/openwrt/toolchain-*)"
+          linker="$(find "${toolchain}/bin" -maxdepth 1 -name '*-openwrt-linux-gcc' | head -n 1)"
           if [ "${{ matrix.target }}" == "mipsel-unknown-linux-musl" ]; then
-            res_dir="$(ls -d ${toolchain}/lib/gcc/*/*)"
-            cp ${res_dir}/libgcc.a ${res_dir}/libunwind.a
-            export RUSTFLAGS="-Ctarget-feature=+crt-static -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort -Clinker=$(ls ${toolchain}/bin/*-openwrt-linux-gcc) -L${toolchain}/lib -L${res_dir}"
+            res_dir="$(find "${toolchain}/lib/gcc" -mindepth 2 -maxdepth 2 -type d | head -n 1)"
+            cp "${res_dir}/libgcc.a" "${res_dir}/libunwind.a"
+            export RUSTFLAGS="-Ctarget-feature=+crt-static -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort -Clinker=${linker} -L${toolchain}/lib -L${res_dir}"
           else
-            export RUSTFLAGS="-Ctarget-feature=+crt-static -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort -Clinker=$(ls ${toolchain}/bin/*-openwrt-linux-gcc)"
+            export RUSTFLAGS="-Ctarget-feature=+crt-static -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort -Clinker=${linker}"
           fi
-          cargo +nightly build -Zbuild-std=std,panic_abort -r --target ${{ matrix.target }}
-          upx -9 target/${{ matrix.target }}/release/iptv
+          cargo +nightly build -Zbuild-std=std,panic_abort -r --target "${{ matrix.target }}"
+          upx -9 "target/${{ matrix.target }}/release/iptv"
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
           path: target/${{ matrix.target }}/release/iptv
+
+  build-openwrt-openssl:
+    name: Build x86_64 OpenWrt with dynamic OpenSSL
+    runs-on: ubuntu-latest
+    env:
+      TARGET: x86_64-unknown-linux-musl
+      OPENWRT_DIR: /home/runner/openwrt-openssl
+      OPENWRT_SDK: https://downloads.openwrt.org/releases/24.10.2/targets/x86/64/openwrt-sdk-24.10.2-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install OpenWrt SDK prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential flex bison gawk gettext libncurses-dev \
+            libssl-dev python3-setuptools rsync swig unzip zlib1g-dev zstd
+
+      - name: Prepare OpenWrt OpenSSL sysroot
+        run: |
+          mkdir -p "${OPENWRT_DIR}"
+          wget "${OPENWRT_SDK}" -qO- | tar --strip-components 1 -C "${OPENWRT_DIR}" -x --zstd
+          cd "${OPENWRT_DIR}"
+          ./scripts/feeds update -a
+          ./scripts/feeds install openssl
+          echo 'CONFIG_PACKAGE_libopenssl=y' >> .config
+          make defconfig
+          make package/openssl/compile -j"$(nproc)" V=sc
+
+      - name: Build dynamically linked binary
+        run: |
+          rustup target add "${TARGET}"
+          toolchain="$(find "${OPENWRT_DIR}/staging_dir" -maxdepth 1 -type d -name 'toolchain-*' | head -n 1)"
+          target_sysroot="$(find "${OPENWRT_DIR}/staging_dir" -maxdepth 1 -type d -name 'target-*' | head -n 1)"
+          linker="$(find "${toolchain}/bin" -maxdepth 1 -name '*-openwrt-linux-gcc' | head -n 1)"
+          archiver="$(find "${toolchain}/bin" -maxdepth 1 -name '*-openwrt-linux-ar' | head -n 1)"
+
+          test -n "${toolchain}"
+          test -n "${target_sysroot}"
+          test -x "${linker}"
+          test -x "${archiver}"
+          test -f "${target_sysroot}/usr/include/openssl/ssl.h"
+          test -e "${target_sysroot}/usr/lib/libssl.so"
+          test -e "${target_sysroot}/usr/lib/libcrypto.so"
+
+          export STAGING_DIR="${OPENWRT_DIR}/staging_dir"
+          export PKG_CONFIG_ALLOW_CROSS=1
+          export PKG_CONFIG_SYSROOT_DIR="${target_sysroot}"
+          export PKG_CONFIG_PATH="${target_sysroot}/usr/lib/pkgconfig"
+          export OPENSSL_DIR="${target_sysroot}/usr"
+          export OPENSSL_INCLUDE_DIR="${target_sysroot}/usr/include"
+          export OPENSSL_LIB_DIR="${target_sysroot}/usr/lib"
+          export OPENSSL_NO_VENDOR=1
+          export OPENSSL_STATIC=0
+          export TARGET_CC="${linker}"
+          export CC_x86_64_unknown_linux_musl="${linker}"
+          export AR_x86_64_unknown_linux_musl="${archiver}"
+          export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER="${linker}"
+          export RUSTFLAGS="-Ctarget-feature=-crt-static -Clinker=${linker}"
+
+          cargo build --locked --release --target "${TARGET}" --features tls
+
+      - name: Verify dynamic dependencies and compress
+        run: |
+          binary="target/${TARGET}/release/iptv"
+          readelf -d "${binary}" | tee /tmp/iptv-dynamic-section.txt
+          grep -Fq 'Shared library: [libssl.so.3]' /tmp/iptv-dynamic-section.txt
+          grep -Fq 'Shared library: [libcrypto.so.3]' /tmp/iptv-dynamic-section.txt
+          grep -Fq 'Shared library: [libc.so]' /tmp/iptv-dynamic-section.txt
+          upx -9 "${binary}"
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: x86_64-openwrt-openssl
+          path: target/${{ env.TARGET }}/release/iptv
+
   build-windows:
     name: Build x86_64-pc-windows-gnu
     runs-on: windows-latest
@@ -71,3 +149,35 @@ jobs:
       with:
         name: x86_64-pc-windows-gnu
         path: target/x86_64-pc-windows-gnu/release/iptv.exe
+
+  release:
+    name: Publish release assets
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-openwrt, build-openwrt-openssl, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Package release assets
+        run: |
+          mkdir -p release-assets
+          for artifact in release-artifacts/*; do
+            name="$(basename "${artifact}")"
+            chmod +x "${artifact}"/iptv* || true
+            (cd "${artifact}" && zip -9 -r "../../release-assets/${name}.zip" .)
+          done
+          (cd release-assets && sha256sum ./*.zip > SHA256SUMS)
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            release-assets/*.zip
+            release-assets/SHA256SUMS

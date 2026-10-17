@@ -54,7 +54,7 @@ You don't need to install openwrt sdk for this.
 rustup target add x86_64-unknown-linux-musl
 cargo build -r --target x86_64-unknown-linux-musl
 ```
-Append `--features rustls-tls` if need tls support.
+Append `--features rustls` if TLS support is needed in a fully static binary.
 
 To reduce binary size, you need to install openwrt sdk to ${openwrt}, and then build with
 ```bash
@@ -84,6 +84,18 @@ export STAGING_DIR=$PKG_CONFIG_SYSROOT_DIR
 export RUSTFLAGS="-C target-feature=-crt-static -Zlocation-detail=none -C linker=$(ls ${toolchain}/bin/*-openwrt-linux-gcc)"
 cargo build -r --target x86_64-unknown-linux-musl --features tls
 ```
+
+Release builds also include `x86_64-openwrt-openssl.zip`. This variant is built
+with the OpenWrt 24.10.2 SDK and dynamically links OpenSSL 3 to keep the binary
+small. Install the runtime dependencies before using it:
+
+```bash
+opkg update
+opkg install libopenssl3 ca-bundle
+```
+
+The binary expects `libssl.so.3`, `libcrypto.so.3`, `libgcc_s.so.1`, and musl's
+dynamic loader to be available on the router.
 
 ### Docker
 
