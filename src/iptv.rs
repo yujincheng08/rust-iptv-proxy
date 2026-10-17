@@ -140,9 +140,8 @@ pub(crate) async fn get_channels(
 
     debug!("Got token {token}");
 
-    let enc = ecb::Encryptor::<TdesEde3>::new_from_slice(
-        &format!("{:X}", md5::compute(passwd.as_bytes())).as_bytes()[..]
-    );
+    let password_digest = format!("{:X}", md5::compute(passwd.as_bytes()));
+    let enc = ecb::Encryptor::<TdesEde3>::new_from_slice(&password_digest.as_bytes()[..24]);
     let enc = match enc {
         Ok(enc) => Ok(enc),
         Err(e) => Err(std::io::Error::new(
